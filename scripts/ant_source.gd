@@ -2,6 +2,7 @@ extends Node2D
 
 signal worker_count_changed(count: int)
 const ANT_SCENE: PackedScene = preload("res://scenes/ant.tscn")
+const FOOD_SOURCE_SCENE: PackedScene = preload("res://scenes/food_source.tscn")
 const QUEEN_COUNT: int = 1
 const WORKER_COUNT: int = 10
 const WARRIOR_COUNT: int = 3
@@ -17,10 +18,14 @@ const MAX_GROUP_SIZE: int = 100
 @export_range(1.0, 10.0, 0.5) var idle_pause_duration: float = 3.0
 @export_range(0.0, 10000.0, 1.0) var food_search_range: float = 120.0
 @export_range(0.0, 10000.0, 1.0) var warrior_scout_range: float = 32.0
+@export_range(0, 20, 1) var active_food_source_count: int = 3
+@export_range(1, 100, 1) var food_per_ant_per_trip: int = 1
+@export_range(1.0, 20.0, 0.5) var food_gather_pause_duration: float = 5.0
 
 @onready var queen_cluster: Node2D = $QueenCluster
 @onready var worker_cluster: Node2D = $WorkerCluster
 @onready var warrior_cluster: Node2D = $WarriorCluster
+@onready var food_sources_container: Node2D = $FoodSources
 
 var queen_ants: Array[AntParticle] = []
 var worker_ants: Array[AntParticle] = []
@@ -36,6 +41,8 @@ var worker_idle_remaining: float = 0.0
 var warrior_idle_remaining: float = 0.0
 var worker_foraging_enabled: bool = false
 var worker_behavior_initialized: bool = false
+var worker_is_returning_food: bool = false
+var carried_food: int = 0
 
 
 func _ready() -> void:
@@ -43,6 +50,7 @@ func _ready() -> void:
 	if get_tree().current_scene == get_parent():
 		position = get_viewport_rect().size * 0.5
 	_spawn_colonies()
+	_spawn_initial_food_sources()
 	if not worker_ants.is_empty():
 		worker_groups.append(worker_ants.duplicate())
 	if not warrior_ants.is_empty():
@@ -109,6 +117,8 @@ func _start_worker_walk() -> void:
 
 	var direction := Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
 	current_food_source = null
+	worker_is_returning_food = false
+	carried_food = 0
 	worker_destination = _center_of_mass(worker_ants) + direction * leader_destination_distance
 	_set_workers_walking()
 
@@ -135,14 +145,14 @@ func _set_workers_walking() -> void:
 	worker_colony_is_walking = true
 
 
-func _pause_workers() -> void:
+func _pause_workers(duration: float = idle_pause_duration) -> void:
 	worker_colony_is_walking = false
-	worker_idle_remaining = idle_pause_duration
+	worker_idle_remaining = duration
 	_set_group_idle(worker_ants)
 
 
 func _update_worker_walking(delta: float) -> void:
-	if current_food_source != null:
+	if current_food_source != null and not worker_is_returning_food:
 		if not is_instance_valid(current_food_source):
 			current_food_source = null
 			_pause_workers()
@@ -165,7 +175,21 @@ func _update_worker_walking(delta: float) -> void:
 
 	if leader.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE and followers_settled:
 		worker_foraging_enabled = true
-		_pause_workers()
+		if worker_is_returning_food:
+			GameState.add_food(carried_food)
+			carried_food = 0
+			worker_is_returning_food = false
+			current_food_source = null
+			_pause_workers()
+		elif current_food_source != null and is_instance_valid(current_food_source):
+			carried_food = int(current_food_source.call("harvest", worker_ants.size() * food_per_ant_per_trip))
+			current_food_source = null
+			if carried_food > 0:
+				_pause_workers(food_gather_pause_duration)
+			else:
+				_pause_workers()
+		else:
+			_pause_workers()
 
 
 func _update_idle_workers(delta: float) -> void:
@@ -177,7 +201,10 @@ func _update_idle_workers(delta: float) -> void:
 		worker_idle_remaining = maxf(0.0, worker_idle_remaining - delta)
 		if worker_idle_remaining > 0.0:
 			return
-	if current_food_source != null and is_instance_valid(current_food_source):
+	if carried_food > 0:
+		_begin_worker_return_trip()
+		return
+	if current_food_source != null and is_instance_valid(current_food_source) and not worker_is_returning_food:
 		return
 	current_food_source = null
 	_start_worker_foraging_walk()
@@ -251,13 +278,15 @@ func _assign_idle_target(ant: AntParticle) -> void:
 func _nearest_food_source() -> Node2D:
 	var leader := worker_ants[0]
 	var nearest: Node2D
-	var nearest_distance := food_search_range
+	var nearest_distance := INF
 	for candidate in get_tree().get_nodes_in_group("food_sources"):
 		var source := candidate as Node2D
 		if source == null:
 			continue
+		if int(source.get("food_remaining")) <= 0:
+			continue
 		var distance := leader.global_position.distance_to(source.global_position)
-		if distance <= food_search_range and (nearest == null or distance < nearest_distance):
+		if nearest == null or distance < nearest_distance:
 			nearest = source
 			nearest_distance = distance
 	return nearest
@@ -268,6 +297,34 @@ func _center_of_mass(group: Array[AntParticle]) -> Vector2:
 	for ant in group:
 		center += ant.position
 	return center / float(group.size())
+
+
+func _spawn_initial_food_sources() -> void:
+	for _index in range(active_food_source_count):
+		_spawn_food_source()
+
+
+func _spawn_food_source() -> void:
+	var source := FOOD_SOURCE_SCENE.instantiate() as Node2D
+	source.connect("depleted", _on_food_source_depleted)
+	food_sources_container.add_child(source)
+	source.call("initialize", random)
+	var angle := random.randf_range(0.0, TAU)
+	var radius := random.randf_range(food_search_range * 0.45, food_search_range)
+	source.position = Vector2.RIGHT.rotated(angle) * radius
+
+
+func _on_food_source_depleted(_source: Node2D) -> void:
+	_spawn_food_source()
+
+
+func _begin_worker_return_trip() -> void:
+	if worker_is_returning_food or carried_food <= 0:
+		return
+	worker_is_returning_food = true
+	current_food_source = null
+	worker_destination = worker_cluster.to_local(queen_cluster.global_position)
+	_set_workers_walking()
 
 
 
