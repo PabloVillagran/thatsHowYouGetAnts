@@ -3,9 +3,10 @@ extends Node
 signal food_changed(amount: int)
 
 const QUEEN_FOOD_INTERVAL: float = 5.0
+const STARTING_FOOD: int = 250
 const SAVE_PATH: String = "user://game_state.json"
 
-var food_amount: int = 0:
+var food_amount: int = STARTING_FOOD:
 	set(value):
 		food_amount = maxi(value, 0)
 		food_changed.emit(food_amount)
@@ -88,7 +89,7 @@ func reset_game() -> void:
 			push_error("Could not remove saved game: %s" % error_string(remove_error))
 			return
 
-	food_amount = 0
+	food_amount = STARTING_FOOD
 	queen_food_elapsed = 0.0
 	has_saved_game = false
 	saved_queen_amount = 1
