@@ -16,3 +16,9 @@
 - The main scene's text-only food label is pinned to the bottom of the screen and displays the current amount. Food sources and ant collection are separate mechanics and have not yet been implemented.
 - Worker purchases are organized into groups capped at 100 ants. Once the current worker group reaches 100, the next purchase starts another group; each worker still costs 100 food.
 - `GameState` loads and saves a local JSON snapshot at `user://game_state.json`. Pressing the worker purchase button saves the Unix update timestamp, food amount, and queen, worker, and warrior counts. On startup, a saved snapshot restores the food balance and colony counts; without a snapshot, scene defaults apply.
+
+## Colony startup and worker behavior
+
+- A new player starts with one queen only. `MainScene.tscn` disables worker and warrior spawning, and the queen remains idle.
+- Initialize worker behavior when the first worker is registered in `WorkerCluster`, rather than assuming workers exist when `AntSource` enters the scene. This applies both to any scene configured to spawn workers and to the first worker purchased during play.
+- On first worker initialization, establish the idle state and startup pause, then let the existing worker movement and foraging loop run. Later workers join the active worker group.

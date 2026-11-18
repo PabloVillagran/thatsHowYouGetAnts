@@ -79,3 +79,20 @@ func _load_game() -> void:
 	saved_worker_amount = maxi(0, int(state.get("worker_amount", 0)))
 	saved_warrior_amount = maxi(0, int(state.get("warrior_amount", 0)))
 	has_saved_game = true
+
+
+func reset_game() -> void:
+	if FileAccess.file_exists(SAVE_PATH):
+		var remove_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+		if remove_error != OK:
+			push_error("Could not remove saved game: %s" % error_string(remove_error))
+			return
+
+	food_amount = 0
+	queen_food_elapsed = 0.0
+	has_saved_game = false
+	saved_queen_amount = 1
+	saved_worker_amount = 0
+	saved_warrior_amount = 0
+	update_time = 0
+	get_tree().reload_current_scene()

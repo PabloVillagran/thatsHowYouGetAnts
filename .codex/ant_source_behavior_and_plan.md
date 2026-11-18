@@ -88,3 +88,9 @@
 - Pressing the worker purchase button saves `update_time` (Unix time), `food_amount`, `queen_amount`, `worker_amount`, and `warrior_amount` after the purchase attempt.
 - At startup, a valid snapshot restores the food balance and ant counts. When no snapshot exists, `AntSource` uses its scene spawn settings and default counts.
 - Saving is currently triggered by the worker button; other gameplay changes are not written until that button is pressed.
+
+## First worker initialization
+
+- Do not assume `worker_ants` exists when `AntSource._ready()` runs; the main scene intentionally starts with only the queen.
+- Initialize worker behavior exactly once when the first ant is registered in the worker cluster. Set its idle behavior and startup pause at that point so the worker loop is ready for both scene-spawned workers and the first purchased worker.
+- Subsequent purchased workers join the worker collection and inherit the current walking or idle behavior.

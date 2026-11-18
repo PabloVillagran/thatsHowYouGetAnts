@@ -35,6 +35,7 @@ var startup_idle_remaining: float = 0.0
 var worker_idle_remaining: float = 0.0
 var warrior_idle_remaining: float = 0.0
 var worker_foraging_enabled: bool = false
+var worker_behavior_initialized: bool = false
 
 
 func _ready() -> void:
@@ -43,10 +44,9 @@ func _ready() -> void:
 		position = get_viewport_rect().size * 0.5
 	_spawn_colonies()
 	if not worker_ants.is_empty():
-		worker_groups.append(worker_ants)
+		worker_groups.append(worker_ants.duplicate())
 	if not warrior_ants.is_empty():
 		_start_warrior_scouting()
-	startup_idle_remaining = idle_pause_duration if not worker_ants.is_empty() else 0.0
 
 
 func _process(delta: float) -> void:
@@ -74,6 +74,8 @@ func _spawn_colonies() -> void:
 		ant.heading = worker_direction
 		ant.rotation = worker_direction.angle() - PI * 0.5
 		worker_ants.append(ant)
+		if worker_ants.size() == 1:
+			_initialize_worker_behavior()
 
 	for index in range(queen_count):
 		var queen := _create_ant(AntParticle.AntType.QUEEN, queen_cluster)
@@ -268,34 +270,44 @@ func _center_of_mass(group: Array[AntParticle]) -> Vector2:
 	return center / float(group.size())
 
 
+
+func _initialize_worker_behavior() -> void:
+	if worker_behavior_initialized or worker_ants.is_empty():
+		return
+	worker_behavior_initialized = true
+	current_food_source = null
+	worker_colony_is_walking = false
+	worker_foraging_enabled = false
+	worker_idle_remaining = 0.0
+	startup_idle_remaining = idle_pause_duration
+	_set_group_idle(worker_ants)
+
+
 func purchase_worker() -> bool:
 	if not GameState.spend_food(100):
 		return false
 
+	var first_worker := worker_ants.is_empty()
 	var worker := _create_ant(AntParticle.AntType.WORKER, worker_cluster)
 	if worker_groups.is_empty():
-		worker_groups.append(worker_ants)
+		worker_groups.append(worker_ants.duplicate())
 	if worker_groups.back().size() >= MAX_GROUP_SIZE:
 		worker_groups.append([])
 	var current_group: Array = worker_groups.back()
-	if worker_ants.is_empty():
-		worker.position = Vector2.ZERO
-		worker_ants.append(worker)
-		current_group.append(worker)
-		worker_count_changed.emit(worker_ants.size())
-		current_food_source = null
-		worker_foraging_enabled = false
-		worker_colony_is_walking = false
-		startup_idle_remaining = idle_pause_duration
-		_set_group_idle(worker_ants)
-		return true
 
-	var predecessor := worker_ants[worker_ants.size() - 1]
-	worker.position = predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+	if first_worker:
+		worker.position = Vector2.ZERO
+	else:
+		var predecessor := worker_ants[worker_ants.size() - 1]
+		worker.position = predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+
 	worker_ants.append(worker)
 	current_group.append(worker)
 	worker_count_changed.emit(worker_ants.size())
-	if worker_colony_is_walking:
+
+	if first_worker:
+		_initialize_worker_behavior()
+	elif worker_colony_is_walking:
 		worker.set_state(AntParticle.State.walking)
 	else:
 		worker.set_state(AntParticle.State.idle)
