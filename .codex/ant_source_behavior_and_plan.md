@@ -49,13 +49,13 @@
 - After the colony completes its initial destination, the leader looks for the nearest `Node2D` in the `food_sources` group within `food_search_range` (default 120 pixels).
 - If a source is found, the leader walks to it and the remaining ants follow their predecessor.
 - If no source is in range, the leader picks a random scouting point within `food_search_range`; followers trail behind. After its idle pause, the colony searches again.
-- At a food source, ants wait in `idle`. Gathering and food collection remain deferred until those mechanics are defined.
+- Each worker enters `gathering` when it reaches the food source, scatters within its 10-pixel anchor range during its gathering pause, then carries its own harvested food back to the queen.
 - Food source nodes should join the `food_sources` group. The search range is adjustable on `AntSource`.
 
 ## Ant clusters and role behavior
 
 - `QueenCluster` contains one queen, positioned separately from the other clusters. The queen remains in the `idle` state and scatters within 10 pixels of her idle anchor.
-- `WorkerCluster` contains 10 workers. The first worker leads; the others follow in emission order. Workers use the existing startup idle, destination walking, food seeking, and idle-at-food behavior. They pause in `idle` for 3 seconds before their first trip and between destinations.
+- Workers use the existing startup idle and destination walking behavior. Each worker gathers and returns food independently, then touches the queen cluster spawn point before depositing its carried food.
 - `WarriorCluster` contains three warriors. Its leader repeatedly scouts random destinations within `warrior_scout_range` (default 32 pixels) of the warrior cluster center, and the other warriors follow. Warriors use `walking` while scouting and pause in `idle` between destinations.
 - Cluster containers are separate children of `AntSource`; queen and warrior clusters have their own scene offsets.
 
@@ -63,7 +63,7 @@
 
 - Mobile ants remain in `idle` for `idle_pause_duration` (default 3 seconds) before starting their initial trip and after reaching each destination. Each ant scatters within 10 pixels of its idle anchor.
 - Warriors pause between scouting points, then continue scouting within their cluster range.
-- Workers pause before searching again after a scout point. At a food source, they remain idle after the pause while gathering behavior is still undefined.
+- At a food source, each worker scatters while gathering, then walks to and touches the queen cluster spawn point to deliver its own food.
 - The queen stays idle at all times and scatters within her 10-pixel idle range.
 
 ## Main scene composition
@@ -94,3 +94,10 @@
 - Do not assume `worker_ants` exists when `AntSource._ready()` runs; the main scene intentionally starts with only the queen.
 - Initialize worker behavior exactly once when the first ant is registered in the worker cluster. Set its idle behavior and startup pause at that point so the worker loop is ready for both scene-spawned workers and the first purchased worker.
 - Subsequent purchased workers join the worker collection and inherit the current walking or idle behavior.
+
+## Per-ant food gathering and delivery
+
+- Each worker begins gathering as soon as it reaches a food source. It scatters around that food-source position within its 10-pixel idle range during its own gathering pause.
+- Each worker harvests its own amount and carries it independently; the colony does not wait to deliver one shared food bundle.
+- After gathering, each worker walks to the queen cluster spawn point and snaps to that exact point before its carried food is added to `GameState`.
+- Workers resume searching after the ants carrying food have completed their individual deliveries and the colony pause has elapsed.

@@ -26,6 +26,10 @@ var state: State = State.idle
 var heading: Vector2 = Vector2.RIGHT
 var target_position: Vector2
 var idle_anchor: Vector2
+var has_reached_destination: bool = false
+var carried_food: int = 0
+var is_returning_food: bool = false
+var food_gather_remaining: float = 0.0
 
 
 func _ready() -> void:

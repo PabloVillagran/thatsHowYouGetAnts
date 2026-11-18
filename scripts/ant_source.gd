@@ -41,8 +41,7 @@ var worker_idle_remaining: float = 0.0
 var warrior_idle_remaining: float = 0.0
 var worker_foraging_enabled: bool = false
 var worker_behavior_initialized: bool = false
-var worker_is_returning_food: bool = false
-var carried_food: int = 0
+var worker_destination_handled: bool = false
 
 
 func _ready() -> void:
@@ -60,6 +59,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_update_idle_group(queen_ants, delta)
 	_update_warrior_scouting(delta)
+	_update_worker_returns(delta)
 	if worker_colony_is_walking:
 		_update_worker_walking(delta)
 	else:
@@ -117,8 +117,6 @@ func _start_worker_walk() -> void:
 
 	var direction := Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
 	current_food_source = null
-	worker_is_returning_food = false
-	carried_food = 0
 	worker_destination = _center_of_mass(worker_ants) + direction * leader_destination_distance
 	_set_workers_walking()
 
@@ -138,6 +136,10 @@ func _start_worker_foraging_walk() -> void:
 
 
 func _set_workers_walking() -> void:
+	worker_destination_handled = false
+	worker_idle_remaining = 0.0
+	for ant in worker_ants:
+		ant.has_reached_destination = false
 	worker_ants[0].set_target(worker_destination)
 	worker_ants[0].set_state(AntParticle.State.walking)
 	for index in range(1, worker_ants.size()):
@@ -145,68 +147,108 @@ func _set_workers_walking() -> void:
 	worker_colony_is_walking = true
 
 
-func _pause_workers(duration: float = idle_pause_duration) -> void:
-	worker_colony_is_walking = false
-	worker_idle_remaining = duration
-	_set_group_idle(worker_ants)
-
-
 func _update_worker_walking(delta: float) -> void:
-	if current_food_source != null and not worker_is_returning_food:
-		if not is_instance_valid(current_food_source):
+	if current_food_source != null:
+		if is_instance_valid(current_food_source):
+			worker_destination = worker_cluster.to_local(current_food_source.global_position)
+		else:
 			current_food_source = null
-			_pause_workers()
-			return
-		worker_destination = worker_cluster.to_local(current_food_source.global_position)
 
 	var leader := worker_ants[0]
-	leader.set_target(worker_destination)
-	leader.move_step(delta)
+	if not leader.is_returning_food and leader.carried_food <= 0:
+		if not leader.has_reached_destination:
+			leader.set_target(worker_destination)
+			leader.move_step(delta)
+			if leader.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE:
+				_arrive_ant_at_destination(leader, worker_destination)
+				if current_food_source != null:
+					_collect_worker_food(leader)
+				else:
+					worker_idle_remaining = idle_pause_duration
+		else:
+			_update_idle_ant(leader, delta)
+			worker_idle_remaining = maxf(0.0, worker_idle_remaining - delta)
+			if worker_idle_remaining == 0.0 and current_food_source == null:
+				_start_worker_foraging_walk()
+				return
 
-	var followers_settled := true
 	for index in range(1, worker_ants.size()):
 		var ant := worker_ants[index]
+		if ant.is_returning_food or ant.carried_food > 0:
+			continue
+		if ant.has_reached_destination:
+			_update_idle_ant(ant, delta)
+			continue
 		var predecessor := worker_ants[index - 1]
-		var trail_target := predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+		var trail_target := worker_destination if predecessor.has_reached_destination else predecessor.position - predecessor.heading * FOLLOW_DISTANCE
 		ant.set_target(trail_target)
+		ant.set_state(AntParticle.State.walking)
 		ant.move_step(delta)
-		if ant.position.distance_to(trail_target) > ARRIVAL_TOLERANCE:
-			followers_settled = false
+		if ant.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE:
+			_arrive_ant_at_destination(ant, worker_destination)
+			if current_food_source != null:
+				_collect_worker_food(ant)
 
-	if leader.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE and followers_settled:
-		worker_foraging_enabled = true
-		if worker_is_returning_food:
-			GameState.add_food(carried_food)
-			carried_food = 0
-			worker_is_returning_food = false
-			current_food_source = null
-			_pause_workers()
-		elif current_food_source != null and is_instance_valid(current_food_source):
-			carried_food = int(current_food_source.call("harvest", worker_ants.size() * food_per_ant_per_trip))
-			current_food_source = null
-			if carried_food > 0:
-				_pause_workers(food_gather_pause_duration)
-			else:
-				_pause_workers()
-		else:
-			_pause_workers()
+	for ant in worker_ants:
+		if not ant.has_reached_destination:
+			return
+	if worker_destination_handled:
+		return
+	worker_destination_handled = true
+	worker_foraging_enabled = true
+	current_food_source = null
+	worker_colony_is_walking = false
+
+
+func _collect_worker_food(ant: AntParticle) -> void:
+	if not is_instance_valid(current_food_source):
+		return
+	ant.carried_food = int(current_food_source.call("harvest", food_per_ant_per_trip))
+	if ant.carried_food <= 0:
+		return
+	ant.food_gather_remaining = food_gather_pause_duration
+	ant.idle_anchor = worker_destination
+	ant.set_state(AntParticle.State.gathering)
+	_assign_idle_target(ant)
+	worker_idle_remaining = food_gather_pause_duration
+
+
+func _update_worker_returns(delta: float) -> void:
+	var queen_position := worker_cluster.to_local(queen_cluster.global_position)
+	for ant in worker_ants:
+		if ant.carried_food > 0 and not ant.is_returning_food:
+			_update_idle_ant(ant, delta)
+			ant.food_gather_remaining = maxf(0.0, ant.food_gather_remaining - delta)
+			if ant.food_gather_remaining == 0.0:
+				ant.is_returning_food = true
+				ant.set_state(AntParticle.State.walking)
+				ant.set_target(queen_position)
+			continue
+		if not ant.is_returning_food:
+			continue
+		ant.set_target(queen_position)
+		ant.move_step(delta)
+		if ant.position.distance_to(queen_position) <= ARRIVAL_TOLERANCE:
+			ant.position = queen_position
+			GameState.add_food(ant.carried_food)
+			ant.carried_food = 0
+			ant.is_returning_food = false
+			ant.set_state(AntParticle.State.idle)
+			ant.idle_anchor = queen_position
+			_assign_idle_target(ant)
 
 
 func _update_idle_workers(delta: float) -> void:
 	_update_idle_group(worker_ants, delta)
 	if not worker_foraging_enabled:
 		return
-
+	for ant in worker_ants:
+		if ant.is_returning_food or ant.carried_food > 0:
+			return
 	if worker_idle_remaining > 0.0:
 		worker_idle_remaining = maxf(0.0, worker_idle_remaining - delta)
 		if worker_idle_remaining > 0.0:
 			return
-	if carried_food > 0:
-		_begin_worker_return_trip()
-		return
-	if current_food_source != null and is_instance_valid(current_food_source) and not worker_is_returning_food:
-		return
-	current_food_source = null
 	_start_worker_foraging_walk()
 
 
@@ -218,6 +260,8 @@ func _choose_warrior_destination() -> void:
 	var angle := random.randf_range(0.0, TAU)
 	var radius := sqrt(random.randf()) * warrior_scout_range
 	warrior_destination = Vector2.RIGHT.rotated(angle) * radius
+	for ant in warrior_ants:
+		ant.has_reached_destination = false
 	warrior_ants[0].set_target(warrior_destination)
 	for ant in warrior_ants:
 		ant.set_state(AntParticle.State.walking)
@@ -226,7 +270,7 @@ func _choose_warrior_destination() -> void:
 func _update_warrior_scouting(delta: float) -> void:
 	if warrior_ants.is_empty():
 		return
-	if warrior_idle_remaining > 0.0:
+	if warrior_idle_remaining > 0.0 and not warrior_ants[0].has_reached_destination:
 		_update_idle_group(warrior_ants, delta)
 		warrior_idle_remaining = maxf(0.0, warrior_idle_remaining - delta)
 		if warrior_idle_remaining == 0.0:
@@ -234,23 +278,45 @@ func _update_warrior_scouting(delta: float) -> void:
 		return
 
 	var leader := warrior_ants[0]
-	leader.set_target(warrior_destination)
-	leader.move_step(delta)
+	if not leader.has_reached_destination:
+		leader.set_target(warrior_destination)
+		leader.move_step(delta)
+		if leader.position.distance_to(warrior_destination) <= ARRIVAL_TOLERANCE:
+			_arrive_ant_at_destination(leader, warrior_destination)
+			warrior_idle_remaining = idle_pause_duration
+	else:
+		_update_idle_ant(leader, delta)
+		warrior_idle_remaining = maxf(0.0, warrior_idle_remaining - delta)
+		if warrior_idle_remaining == 0.0:
+			_choose_warrior_destination()
+			return
 
-	var followers_settled := true
 	for index in range(1, warrior_ants.size()):
 		var ant := warrior_ants[index]
+		if ant.has_reached_destination:
+			_update_idle_ant(ant, delta)
+			continue
 		var predecessor := warrior_ants[index - 1]
-		var trail_target := predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+		var trail_target := warrior_destination if predecessor.has_reached_destination else predecessor.position - predecessor.heading * FOLLOW_DISTANCE
 		ant.set_target(trail_target)
 		ant.set_state(AntParticle.State.walking)
 		ant.move_step(delta)
-		if ant.position.distance_to(trail_target) > ARRIVAL_TOLERANCE:
-			followers_settled = false
+		if ant.position.distance_to(warrior_destination) <= ARRIVAL_TOLERANCE:
+			_arrive_ant_at_destination(ant, warrior_destination)
 
-	if leader.position.distance_to(warrior_destination) <= ARRIVAL_TOLERANCE and followers_settled:
-		warrior_idle_remaining = idle_pause_duration
-		_set_group_idle(warrior_ants)
+
+func _arrive_ant_at_destination(ant: AntParticle, destination: Vector2) -> void:
+	ant.position = destination
+	ant.has_reached_destination = true
+	ant.set_state(AntParticle.State.idle)
+	ant.idle_anchor = destination
+	_assign_idle_target(ant)
+
+
+func _update_idle_ant(ant: AntParticle, delta: float) -> void:
+	if ant.is_at_target(ARRIVAL_TOLERANCE):
+		_assign_idle_target(ant)
+	ant.move_step(delta)
 
 
 func _set_group_idle(group: Array[AntParticle]) -> void:
@@ -316,16 +382,6 @@ func _spawn_food_source() -> void:
 
 func _on_food_source_depleted(_source: Node2D) -> void:
 	_spawn_food_source()
-
-
-func _begin_worker_return_trip() -> void:
-	if worker_is_returning_food or carried_food <= 0:
-		return
-	worker_is_returning_food = true
-	current_food_source = null
-	worker_destination = worker_cluster.to_local(queen_cluster.global_position)
-	_set_workers_walking()
-
 
 
 func _initialize_worker_behavior() -> void:
