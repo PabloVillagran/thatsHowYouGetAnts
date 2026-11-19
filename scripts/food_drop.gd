@@ -14,7 +14,7 @@ func initialize(amount: int) -> void:
 		Vector2(-0.5, 0.5),
 	])
 	color = Color(1.0, 0.78, 0.18, 1.0)
-	add_to_group("food_sources")
+	add_to_group("food_drops")
 
 
 func harvest(requested_amount: int) -> int:

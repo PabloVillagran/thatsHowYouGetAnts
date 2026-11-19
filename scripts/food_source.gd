@@ -30,6 +30,7 @@ func initialize(random: RandomNumberGenerator, food_multiplier: float = 1.0) -> 
 	scale = Vector2.ONE * radius
 	color = Color(0.88, 0.58, 0.16, 1.0)
 	add_to_group("food_sources")
+	add_to_group("food_polygons")
 
 
 func harvest(requested_amount: int) -> int:
