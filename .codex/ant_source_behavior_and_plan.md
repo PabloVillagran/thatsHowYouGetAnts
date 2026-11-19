@@ -4,15 +4,17 @@
 
 - Use `Polygon2D` ants and food; do not add imported game art.
 - `AntSource` owns the queen, worker, and warrior ants directly. Workers form logical leader/follower clusters capped at 10 ants each.
-- Queens and the first worker in every cluster spawn at `QUEEN_SPAWN_POSITION`, 32 pixels above the AntSource origin. Later workers join the current cluster and follow the ant before them.
-- Expired Queen Ant 1 workers remain as hollow shapes with a 1-pixel blue outline.
+- Queens and every worker spawn at `QUEEN_SPAWN_POSITION`, 32 pixels above the AntSource origin. Workers then move as ordered leader/follower clusters.
+- Expired Queen Ant 1 workers disappear completely.
 
 ## Cluster foraging
 
-- Each cluster leader searches for the nearest live food source immediately when the cluster is initialized. If no source exists, the cluster scouts to a random point and searches again when it arrives. Followers trail in order.
-- Each worker harvests its own carry amount and waits at the source. Carrying workers return independently to points inside the 10 by 10 pixel square centered on the queen's spawn point, add their food to `GameState.food_amount`, then wait for the cluster to resume searching.
-- If a worker expires while carrying food, it drops that amount as a harvestable source at a random point inside the same queen-centered 10 by 10 pixel square. Each drop is represented by a 1 by 1 pixel polygon and can be harvested by another worker.
-- Food sources and dropped food use the `food_sources` group and expose `food_remaining` and `harvest(amount)`. Regular depleted sources respawn; depleted drops are removed without creating replacement sources.
+- Workers spawn at random points in the queen-centered 10 by 10 pixel deposit square. They join the nearest leader within 40 pixels if its cluster has fewer than 10 workers; otherwise they become a leader.
+- Each cluster leader chooses the nearest live regular food polygon. All cluster ants travel there in order with 9 pixels between ant centers. Once the cluster arrives, each ant moves to a random point within the polygon radius plus 1 pixel and harvests its carry amount. The leader's gather timer controls when the cluster returns; it waits until every ant has gathered before starting the return.
+- The cluster returns together in order to a shared random point in the queen-centered 10 by 10 pixel deposit square, delivers all carried food, then repeats the search. A replacement leader continues the group's current destination.
+- If no live regular food polygon exists, the cluster scouts within `food_search_range` of the queen's spawn point and searches again after arrival. Tiny death drops are not valid forage targets.
+- If a worker expires while carrying food, it drops that amount at the worker's death position as a 1 by 1 pixel polygon. These drops are not selected by cluster leaders.
+- Regular food polygons use the `food_polygons` group and expose `food_remaining` and `harvest(amount)`. Death drops use a separate group and are ignored by foraging. Regular depleted sources respawn; depleted drops are removed without creating replacement sources.
 
 ## Queen Ant 1
 

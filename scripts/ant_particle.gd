@@ -27,6 +27,7 @@ var heading: Vector2 = Vector2.RIGHT
 var target_position: Vector2
 var idle_anchor: Vector2
 var has_reached_destination: bool = false
+var gathered_this_trip: bool = false
 var carried_food: int = 0
 var is_returning_food: bool = false
 var food_gather_remaining: float = 0.0
@@ -36,6 +37,7 @@ var food_source: Node2D
 
 
 func _ready() -> void:
+	add_to_group("ants")
 	apply_type_appearance()
 	target_position = position
 	idle_anchor = position
@@ -71,16 +73,4 @@ func mark_dead() -> void:
 	if is_dead:
 		return
 	is_dead = true
-	color = Color(0.0, 0.0, 0.0, 0.0)
-	var outline_color := Color(0.18, 0.45, 0.95, 1.0)
-	var outline_sections: Array = [
-		PackedVector2Array([Vector2(-1.5, -2.0), Vector2(1.5, -2.0), Vector2(1.5, -1.0), Vector2(-1.5, -1.0)]),
-		PackedVector2Array([Vector2(-1.5, 1.0), Vector2(1.5, 1.0), Vector2(1.5, 2.0), Vector2(-1.5, 2.0)]),
-		PackedVector2Array([Vector2(-1.5, -1.0), Vector2(-0.5, -1.0), Vector2(-0.5, 1.0), Vector2(-1.5, 1.0)]),
-		PackedVector2Array([Vector2(0.5, -1.0), Vector2(1.5, -1.0), Vector2(1.5, 1.0), Vector2(0.5, 1.0)]),
-	]
-	for section in outline_sections:
-		var edge := Polygon2D.new()
-		edge.polygon = section
-		edge.color = outline_color
-		add_child(edge)
+	queue_free()

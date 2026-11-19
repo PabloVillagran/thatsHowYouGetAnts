@@ -9,6 +9,5 @@
 
 ## Ant behavior contract
 
-- Worker clusters have at most 10 ants. The leader searches for the nearest food source and followers trail in order; each worker gathers and returns food individually.
-- The first worker in each cluster starts at the queen's spawn point. Delivered food targets the 10 by 10 pixel area centered there.
-- In Queen Ant 1, workers expire after 30 seconds plus 10 seconds per worker-lifetime upgrade level. Expired workers remain as hollow ants with a 1-pixel blue outline; carried food becomes a harvestable 1 by 1 pixel food drop in the queen's delivery area.
+- Workers spawn in the 10 by 10 pixel queen deposit square and join the nearest leader within 40 pixels if that cluster has fewer than 10 ants; otherwise they become a leader. Leaders select the nearest live food polygon. Their cluster travels together, scatters within the polygon radius plus 1 pixel, gathers, and returns together to the deposit square. Only regular food polygons are forage targets; death drops are ignored.
+- In Queen Ant 1, workers expire after 30 seconds plus 10 seconds per worker-lifetime upgrade level. Expired workers disappear; carried food becomes a harvestable 1 by 1 pixel food drop at the worker's death position.
