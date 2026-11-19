@@ -112,13 +112,13 @@ func _register_worker(ant: AntParticle) -> void:
 		_assign_idle_target(ant)
 
 
-func _group_for_new_worker(spawn_position: Vector2) -> Dictionary:
+func _group_for_new_worker(spawn_position: Vector2, create_if_missing: bool = true) -> Dictionary:
 	var nearest_group: Dictionary = {}
 	var nearest_distance := leader_search_range
 	for candidate in worker_groups:
 		var group_state: Dictionary = candidate
 		var group_ants: Array = group_state["ants"]
-		if group_ants.is_empty() or group_ants.size() >= MAX_WORKERS_PER_CLUSTER:
+		if group_state["phase"] == "orphan_return" or group_ants.is_empty() or group_ants.size() >= MAX_WORKERS_PER_CLUSTER:
 			continue
 		var leader := group_ants[0] as AntParticle
 		var distance := spawn_position.distance_to(leader.global_position)
@@ -127,7 +127,7 @@ func _group_for_new_worker(spawn_position: Vector2) -> Dictionary:
 			nearest_group = group_state
 	if not nearest_group.is_empty():
 		return nearest_group
-	return _create_worker_group()
+	return _create_worker_group() if create_if_missing else {}
 
 
 func _create_worker_group() -> Dictionary:
@@ -226,7 +226,7 @@ func _start_worker_group_foraging(group_state: Dictionary) -> void:
 
 
 func _update_worker_groups(delta: float) -> void:
-	for group_state in worker_groups:
+	for group_state in worker_groups.duplicate():
 		var group_ants: Array = group_state["ants"]
 		if group_ants.is_empty():
 			continue
@@ -237,6 +237,8 @@ func _update_worker_groups(delta: float) -> void:
 				_update_group_gathering(group_state, delta)
 			"returning":
 				_update_group_return(group_state, delta)
+			"orphan_return":
+				_update_orphan_return(group_state, delta)
 			_:
 				_start_worker_group_foraging(group_state)
 
@@ -349,6 +351,20 @@ func _update_group_return(group_state: Dictionary, delta: float) -> void:
 	_start_worker_group_foraging(group_state)
 
 
+func _update_orphan_return(group_state: Dictionary, delta: float) -> void:
+	var group_ants: Array = group_state["ants"]
+	_move_group_in_formation(group_state, group_state["destination"], delta)
+	if not _all_group_ants_arrived(group_ants):
+		return
+	for ant in group_ants:
+		GameState.add_food(ant.carried_food)
+		ant.carried_food = 0
+	var ant := group_ants[0] as AntParticle
+	worker_groups.erase(group_state)
+	group_ants.clear()
+	_reassign_worker_after_source_depletion(ant)
+
+
 func _nearest_food_source(origin: Vector2) -> Node2D:
 	var nearest: Node2D
 	var nearest_distance := INF
@@ -418,8 +434,61 @@ func _spawn_food_source() -> void:
 	source.position = Vector2.RIGHT.rotated(angle) * radius
 
 
-func _on_food_source_depleted(_source: Node2D) -> void:
+func _on_food_source_depleted(source: Node2D) -> void:
 	_spawn_food_source()
+	var interrupted_groups: Array = []
+	for group_state in worker_groups:
+		if (group_state["phase"] == "outbound" or group_state["phase"] == "gathering") and group_state["food_source"] == source:
+			interrupted_groups.append(group_state)
+	for group_state in interrupted_groups:
+		worker_groups.erase(group_state)
+		var interrupted_ants: Array = group_state["ants"].duplicate()
+		group_state["ants"].clear()
+		for ant in interrupted_ants:
+			if group_state["phase"] == "gathering":
+				_return_worker_after_gather_source_depletion(ant)
+			else:
+				_reassign_worker_after_source_depletion(ant)
+
+
+func _reassign_worker_after_source_depletion(ant: AntParticle) -> void:
+	ant.has_reached_destination = false
+	ant.gathered_this_trip = false
+	var group_state := _group_for_new_worker(ant.global_position)
+	_attach_worker_to_group(ant, group_state)
+
+
+func _attach_worker_to_group(ant: AntParticle, group_state: Dictionary) -> void:
+	var group_ants: Array = group_state["ants"]
+	group_ants.append(ant)
+	if group_ants.size() == 1:
+		_start_worker_group_foraging(group_state)
+		return
+	match group_state["phase"]:
+		"outbound", "scouting", "returning":
+			ant.set_state(AntParticle.State.walking)
+		"gathering":
+			var current_source := group_state["food_source"] as Node2D
+			if is_instance_valid(current_source):
+				_assign_gathering_target(ant, current_source)
+		_:
+			ant.set_state(AntParticle.State.idle)
+			_assign_idle_target(ant)
+
+
+func _return_worker_after_gather_source_depletion(ant: AntParticle) -> void:
+	ant.has_reached_destination = false
+	ant.gathered_this_trip = false
+	var nearby_group := _group_for_new_worker(ant.global_position, false)
+	if not nearby_group.is_empty():
+		_attach_worker_to_group(ant, nearby_group)
+		return
+	var return_group := _create_worker_group()
+	return_group["ants"].append(ant)
+	return_group["phase"] = "orphan_return"
+	return_group["destination"] = to_local(_random_queen_drop_position())
+	ant.set_target(return_group["destination"])
+	ant.set_state(AntParticle.State.walking)
 
 
 func _on_food_drop_depleted(_drop: Node2D) -> void:
