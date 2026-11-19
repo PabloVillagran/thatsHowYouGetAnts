@@ -33,6 +33,8 @@ var is_returning_food: bool = false
 var food_gather_remaining: float = 0.0
 var lifetime_remaining: float = -1.0
 var is_dead: bool = false
+var combat_health: int = 0
+var attack_cooldown: float = 0.0
 var food_source: Node2D
 
 

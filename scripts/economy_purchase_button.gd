@@ -1,6 +1,6 @@
 extends Button
 
-@export_enum("worker", "queen", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime") var purchase_kind: String = "worker"
+@export_enum("worker", "queen", "warrior", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime") var purchase_kind: String = "worker"
 
 var ant_source
 
@@ -18,9 +18,10 @@ func _on_pressed() -> void:
 	match purchase_kind:
 		"worker": purchased = ant_source.purchase_worker()
 		"queen": purchased = ant_source.purchase_queen()
+		"warrior": purchased = ant_source.purchase_warrior()
 		_: purchased = ant_source.purchase_upgrade(purchase_kind)
 	if purchased:
-		GameState.save_game(ant_source.queen_ants.size(), ant_source.worker_ants.size(), ant_source.warrior_ants.size())
+		ant_source.save_colony()
 	_refresh_state()
 
 
@@ -33,13 +34,15 @@ func _refresh_state(_unused: int = 0) -> void:
 			label = "Workers %s  |  Buy Worker" % _format_quantity(ant_source.worker_ants.size())
 		"queen":
 			label = "Queens %s  |  Buy Queen" % _format_quantity(ant_source.queen_ants.size())
+		"warrior":
+			label = "Guards %s  |  Buy Guard" % _format_quantity(ant_source.warrior_ants.size())
 		"queen_production":
 			label = "Queen Spawn Rate +1 level" if ant_source.queen_ant_mode else "Queen Food +1/5s/queen"
 		"worker_lifetime": label = "Worker Lifetime +10s"
 		"carry_capacity": label = "Carry +1 food/trip"
 		"speed": label = "Ant Speed +10%"
 		"food_efficiency": label = "New Source Stockpile +10%"
-	var level_text := "" if purchase_kind in ["worker", "queen"] else "  Lv.%s" % _format_quantity(level)
+	var level_text := "" if purchase_kind in ["worker", "queen", "warrior"] else "  Lv.%s" % _format_quantity(level)
 	text = "%s%s  |  Cost: %s food" % [label, level_text, _format_quantity(cost)]
 	disabled = GameState.food_amount < cost
 
@@ -48,6 +51,7 @@ func _current_cost() -> int:
 	match purchase_kind:
 		"worker": return GameState.worker_cost
 		"queen": return GameState.queen_cost
+		"warrior": return ant_source.WARRIOR_COST
 		"queen_production": return GameState.queen_production_cost
 		"carry_capacity": return GameState.carry_capacity_cost
 		"speed": return GameState.speed_cost

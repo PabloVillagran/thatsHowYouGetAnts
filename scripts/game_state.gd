@@ -38,6 +38,7 @@ var has_saved_game: bool = false
 var saved_queen_amount: int = 1
 var saved_worker_amount: int = 0
 var saved_warrior_amount: int = 0
+var saved_warrior_health: Array = []
 var update_time: int = 0
 var autosave_elapsed: float = 0.0
 
@@ -70,11 +71,7 @@ func _save_active_game() -> void:
 	var ant_source := scene.get_node_or_null("AntSource")
 	if ant_source == null:
 		return
-	save_game(
-		ant_source.get("queen_ants").size(),
-		ant_source.get("worker_ants").size(),
-		ant_source.get("warrior_ants").size()
-	)
+	ant_source.call("save_colony")
 
 
 func add_food(amount: int) -> void:
@@ -93,7 +90,7 @@ func next_cost(cost: int, multiplier: float) -> int:
 	return mini(MAX_PURCHASE_COST, int(ceil(float(cost) * multiplier)))
 
 
-func save_game(queen_amount: int, worker_amount: int, warrior_amount: int) -> void:
+func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warrior_health: Array = []) -> void:
 	queen_count = queen_amount
 	worker_count = worker_amount
 	warrior_count = warrior_amount
@@ -103,6 +100,7 @@ func save_game(queen_amount: int, worker_amount: int, warrior_amount: int) -> vo
 		"queen_amount": queen_amount,
 		"worker_amount": worker_amount,
 		"warrior_amount": warrior_amount,
+		"warrior_health": warrior_health,
 		"worker_cost": worker_cost,
 		"queen_cost": queen_cost,
 		"queen_production_level": queen_production_level,
@@ -125,6 +123,7 @@ func save_game(queen_amount: int, worker_amount: int, warrior_amount: int) -> vo
 	saved_queen_amount = queen_amount
 	saved_worker_amount = worker_amount
 	saved_warrior_amount = warrior_amount
+	saved_warrior_health = warrior_health
 	has_saved_game = true
 
 
@@ -146,6 +145,8 @@ func _load_game() -> void:
 	saved_queen_amount = maxi(1, int(state.get("queen_amount", 1)))
 	saved_worker_amount = maxi(0, int(state.get("worker_amount", 0)))
 	saved_warrior_amount = maxi(0, int(state.get("warrior_amount", 0)))
+	var health: Variant = state.get("warrior_health", [])
+	saved_warrior_health = health if health is Array else []
 	queen_count = saved_queen_amount
 	worker_count = saved_worker_amount
 	warrior_count = saved_warrior_amount
@@ -193,6 +194,7 @@ func reset_game() -> void:
 	saved_queen_amount = 1
 	saved_worker_amount = 0
 	saved_warrior_amount = 0
+	saved_warrior_health = []
 	update_time = 0
 	autosave_elapsed = 0.0
 	get_tree().reload_current_scene()

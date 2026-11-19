@@ -5,7 +5,7 @@ signal depleted(drop: Node2D)
 var food_remaining: int = 0
 
 
-func initialize(amount: int) -> void:
+func initialize(amount: int, tint: Color = Color(1.0, 0.78, 0.18, 1.0), size: float = 1.0) -> void:
 	food_remaining = maxi(amount, 0)
 	polygon = PackedVector2Array([
 		Vector2(-0.5, -0.5),
@@ -13,7 +13,8 @@ func initialize(amount: int) -> void:
 		Vector2(0.5, 0.5),
 		Vector2(-0.5, 0.5),
 	])
-	color = Color(1.0, 0.78, 0.18, 1.0)
+	color = tint
+	scale = Vector2.ONE * size
 	add_to_group("food_drops")
 
 

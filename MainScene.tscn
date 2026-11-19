@@ -134,6 +134,12 @@ text = "Food Source Stockpile"
 script = ExtResource("4_economy_button")
 purchase_kind = "food_efficiency"
 
+[node name="BuyWarriorButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_economy_button")
+purchase_kind = "warrior"
+
 [node name="ResetButton" type="Button" parent="UI" unique_id=567003580]
 anchors_preset = 5
 anchor_left = 0.5

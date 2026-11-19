@@ -13,6 +13,16 @@ const QUEEN_DROP_HALF_SIZE: float = 5.0
 const QUEEN_SPAWN_POSITION: Vector2 = Vector2(0.0, -32.0)
 const FOLLOW_DISTANCE: float = 9.0
 const MAX_WORKERS_PER_CLUSTER: int = 10
+const COLONY_RADIUS: float = 120.0
+const WARRIOR_COST: int = 75
+const WARRIOR_HEALTH: int = 10
+const WARRIOR_DAMAGE: int = 4
+const ATTACK_RANGE: float = 5.0
+const ATTACK_INTERVAL: float = 1.0
+const WORM_HEALTH: int = 24
+const WORM_DROP_COUNT: int = 6
+const WORM_DROP_FOOD: int = 60
+const WORM_DROP_SPACING: float = 3.0
 
 @export var ant_speed: float = 19.6
 @export var spawn_workers: bool = false
@@ -32,6 +42,9 @@ var worker_groups: Array = []
 var warrior_ants: Array[AntParticle] = []
 var random := RandomNumberGenerator.new()
 var queen_spawn_elapsed: float = 0.0
+var worm: Polygon2D
+var worm_health: int = 0
+var worm_spawn_remaining: float = 0.0
 
 
 func _ready() -> void:
@@ -40,6 +53,8 @@ func _ready() -> void:
 	# The camera frames the viewport center in both game scenes. Keep the
 	# shared spawn origin there regardless of how the scene was entered.
 	position = get_viewport_rect().size * 0.5
+	_draw_colony_boundary()
+	_schedule_worm()
 	_spawn_colonies()
 	_spawn_initial_food_sources()
 	for group_state in worker_groups:
@@ -56,6 +71,7 @@ func _process(delta: float) -> void:
 	_update_worker_lifetimes(delta)
 	_update_worker_groups(delta)
 	_update_idle_queens(delta)
+	_update_worm_spawn(delta)
 	_update_warriors(delta)
 
 
@@ -69,11 +85,11 @@ func _spawn_colonies() -> void:
 		queen_ants.append(queen)
 	for _index in range(workers_to_spawn):
 		_register_worker(_create_ant(AntParticle.AntType.WORKER))
-	for _index in range(warriors_to_spawn):
-		var warrior := _create_ant(AntParticle.AntType.WARRIOR)
-		warrior.position = QUEEN_SPAWN_POSITION
-		warrior_ants.append(warrior)
-		_start_warrior_scouting(warrior)
+	for index in range(warriors_to_spawn):
+		var health := WARRIOR_HEALTH
+		if index < GameState.saved_warrior_health.size():
+			health = clampi(int(GameState.saved_warrior_health[index]), 1, WARRIOR_HEALTH)
+		_spawn_warrior(health)
 	_set_idle_queens()
 	GameState.queen_count = queen_ants.size()
 	GameState.worker_count = worker_ants.size()
@@ -245,11 +261,13 @@ func _update_worker_groups(delta: float) -> void:
 
 func _update_group_travel(group_state: Dictionary, delta: float) -> void:
 	var group_ants: Array = group_state["ants"]
-	var source := group_state["food_source"] as Node2D
-	if group_state["phase"] == "outbound" and not is_instance_valid(source):
+	var source: Node2D
+	if is_instance_valid(group_state["food_source"]):
+		source = group_state["food_source"]
+	if group_state["phase"] == "outbound" and source == null:
 		_start_worker_group_foraging(group_state)
 		return
-	if is_instance_valid(source):
+	if source != null:
 		group_state["destination"] = to_local(source.global_position)
 	var destination: Vector2 = group_state["destination"]
 	_move_group_in_formation(group_state, destination, delta)
@@ -394,23 +412,124 @@ func _update_idle_queens(delta: float) -> void:
 			queen.move_step(delta)
 
 
-func _start_warrior_scouting(warrior: AntParticle) -> void:
-	warrior.idle_anchor = QUEEN_SPAWN_POSITION
+func _draw_colony_boundary() -> void:
+	var boundary := Polygon2D.new()
+	var vertices := PackedVector2Array()
+	var segments: Array[PackedInt32Array] = []
+	const SEGMENT_COUNT: int = 64
+	for index in range(SEGMENT_COUNT):
+		var direction := Vector2.RIGHT.rotated(TAU * index / SEGMENT_COUNT)
+		vertices.append(direction * COLONY_RADIUS)
+		vertices.append(direction * (COLONY_RADIUS - 1.0))
+		var next := (index + 1) % SEGMENT_COUNT
+		segments.append(PackedInt32Array([index * 2, next * 2, next * 2 + 1, index * 2 + 1]))
+	boundary.polygon = vertices
+	boundary.polygons = segments
+	boundary.position = QUEEN_SPAWN_POSITION
+	boundary.color = Color(0.45, 0.7, 0.85, 0.45)
+	boundary.z_index = -2
+	add_child(boundary)
+
+
+func _spawn_warrior(health: int) -> void:
+	var warrior := _create_ant(AntParticle.AntType.WARRIOR)
+	warrior.position = QUEEN_SPAWN_POSITION
+	warrior.combat_health = health
 	warrior.set_state(AntParticle.State.walking)
+	warrior_ants.append(warrior)
 	_choose_warrior_destination(warrior)
 
 
 func _choose_warrior_destination(warrior: AntParticle) -> void:
 	var angle := random.randf_range(0.0, TAU)
-	var radius := sqrt(random.randf()) * food_search_range
-	warrior.set_target(warrior.idle_anchor + Vector2.RIGHT.rotated(angle) * radius)
+	var radius := sqrt(random.randf()) * COLONY_RADIUS
+	warrior.set_target(QUEEN_SPAWN_POSITION + Vector2.RIGHT.rotated(angle) * radius)
 
 
 func _update_warriors(delta: float) -> void:
+	for warrior in warrior_ants.duplicate():
+		warrior.attack_cooldown = maxf(0.0, warrior.attack_cooldown - delta)
+		if worm == null:
+			warrior.move_step(delta)
+			if warrior.is_at_target(ARRIVAL_TOLERANCE):
+				_choose_warrior_destination(warrior)
+			continue
+
+		warrior.set_target(worm.position)
+		if not warrior.is_at_target(ATTACK_RANGE):
+			warrior.move_step(delta)
+		if not warrior.is_at_target(ATTACK_RANGE) or warrior.attack_cooldown > 0.0:
+			continue
+
+		warrior.attack_cooldown = ATTACK_INTERVAL
+		warrior.combat_health -= 1
+		worm_health -= WARRIOR_DAMAGE
+		if worm_health <= 0:
+			_drop_worm_food()
+		if warrior.combat_health <= 0:
+			warrior_ants.erase(warrior)
+			warrior.queue_free()
+			GameState.warrior_count = warrior_ants.size()
+			GameState.economy_changed.emit()
+		save_colony()
+
+
+func _schedule_worm() -> void:
+	worm_spawn_remaining = random.randf_range(12.0, 20.0)
+
+
+func _update_worm_spawn(delta: float) -> void:
+	if worm != null:
+		return
+	worm_spawn_remaining -= delta
+	if worm_spawn_remaining > 0.0:
+		return
+
+	worm = Polygon2D.new()
+	worm.polygon = PackedVector2Array([
+		Vector2(-9, 0), Vector2(-7, -3), Vector2(-3, -4), Vector2(1, -2),
+		Vector2(5, -3), Vector2(9, -1), Vector2(9, 2), Vector2(5, 4),
+		Vector2(1, 2), Vector2(-3, 1), Vector2(-7, 3),
+	])
+	worm.color = Color(0.66, 0.42, 0.75)
+	var angle := random.randf_range(0.0, TAU)
+	var radius := sqrt(random.randf()) * (COLONY_RADIUS - 10.0)
+	worm.position = QUEEN_SPAWN_POSITION + Vector2.RIGHT.rotated(angle) * radius
+	worm.rotation = random.randf_range(0.0, TAU)
+	worm_health = WORM_HEALTH
+	add_child(worm)
+
+
+func _drop_worm_food() -> void:
+	for index in range(WORM_DROP_COUNT):
+		var offset := (float(index) - (WORM_DROP_COUNT - 1) * 0.5) * WORM_DROP_SPACING
+		var drop_position := worm.to_global(Vector2(offset, 0.0))
+		var drop := FOOD_DROP_SCENE.instantiate() as Polygon2D
+		food_sources_container.add_child(drop)
+		drop.position = food_sources_container.to_local(drop_position)
+		drop.call("initialize", WORM_DROP_FOOD, Color(0.95, 0.16, 0.20), 2.0)
+		drop.add_to_group("food_polygons")
+		drop.connect("depleted", _redirect_workers_from_depleted_source)
+
+	worm.queue_free()
+	worm = null
+	_schedule_worm()
+
+
+func purchase_warrior() -> bool:
+	if not GameState.spend_food(WARRIOR_COST):
+		return false
+	_spawn_warrior(WARRIOR_HEALTH)
+	GameState.warrior_count = warrior_ants.size()
+	GameState.economy_changed.emit()
+	return true
+
+
+func save_colony() -> void:
+	var warrior_health: Array[int] = []
 	for warrior in warrior_ants:
-		warrior.move_step(delta)
-		if warrior.is_at_target(ARRIVAL_TOLERANCE):
-			_choose_warrior_destination(warrior)
+		warrior_health.append(warrior.combat_health)
+	GameState.save_game(queen_ants.size(), worker_ants.size(), warrior_ants.size(), warrior_health)
 
 
 func _assign_idle_target(ant: AntParticle) -> void:
@@ -436,6 +555,10 @@ func _spawn_food_source() -> void:
 
 func _on_food_source_depleted(source: Node2D) -> void:
 	_spawn_food_source()
+	_redirect_workers_from_depleted_source(source)
+
+
+func _redirect_workers_from_depleted_source(source: Node2D) -> void:
 	var interrupted_groups: Array = []
 	for group_state in worker_groups:
 		if (group_state["phase"] == "outbound" or group_state["phase"] == "gathering") and group_state["food_source"] == source:
