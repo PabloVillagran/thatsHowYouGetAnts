@@ -61,14 +61,13 @@ func _touch_distance() -> float:
 
 func _update_minimum_zoom() -> void:
 	var ant_count := get_tree().get_nodes_in_group("ants").size()
-	var minimum_zoom := minf(0.5, ceil(sqrt(float(maxi(ant_count, 1)))))
-	minimum_zoom = minf(minimum_zoom, MAX_ZOOM)
+	var minimum_zoom := maxf(0.1, 0.5 / sqrt(float(maxi(ant_count, 1))))
 	zoom = Vector2.ONE * clampf(zoom.x, minimum_zoom, MAX_ZOOM)
 
 
 func _set_zoom(next_zoom: float) -> void:
 	_update_minimum_zoom()
-	var minimum_zoom := minf(0.5, ceil(sqrt(float(maxi(get_tree().get_nodes_in_group("ants").size(), 1)))))
-	minimum_zoom = minf(minimum_zoom, MAX_ZOOM)
+	var ant_count := get_tree().get_nodes_in_group("ants").size()
+	var minimum_zoom := maxf(0.1, 0.5 / sqrt(float(maxi(ant_count, 1))))
 	var bounded_zoom := clampf(next_zoom, minimum_zoom, MAX_ZOOM)
 	zoom = Vector2.ONE * bounded_zoom

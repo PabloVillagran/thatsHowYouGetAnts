@@ -10,6 +10,7 @@ const QUEEN_START_COST: int = 1000
 const UPGRADE_START_COST: int = 25
 const MAX_PURCHASE_COST: int = 2000000000
 const SAVE_PATH: String = "user://game_state.json"
+const AUTOSAVE_INTERVAL: float = 10.0
 
 var food_amount: int = STARTING_FOOD:
 	set(value):
@@ -38,6 +39,7 @@ var saved_queen_amount: int = 1
 var saved_worker_amount: int = 0
 var saved_warrior_amount: int = 0
 var update_time: int = 0
+var autosave_elapsed: float = 0.0
 
 
 func _ready() -> void:
@@ -45,12 +47,34 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if queen_ant_mode_active:
+	if not queen_ant_mode_active:
+		queen_food_elapsed += delta
+		while queen_food_elapsed >= QUEEN_FOOD_INTERVAL:
+			queen_food_elapsed -= QUEEN_FOOD_INTERVAL
+			add_food(queen_count * (1 + queen_production_level))
+	autosave_elapsed += delta
+	if autosave_elapsed >= AUTOSAVE_INTERVAL:
+		autosave_elapsed = 0.0
+		_save_active_game()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_active_game()
+
+
+func _save_active_game() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
 		return
-	queen_food_elapsed += delta
-	while queen_food_elapsed >= QUEEN_FOOD_INTERVAL:
-		queen_food_elapsed -= QUEEN_FOOD_INTERVAL
-		add_food(queen_count * (1 + queen_production_level))
+	var ant_source := scene.get_node_or_null("AntSource")
+	if ant_source == null:
+		return
+	save_game(
+		ant_source.get("queen_ants").size(),
+		ant_source.get("worker_ants").size(),
+		ant_source.get("warrior_ants").size()
+	)
 
 
 func add_food(amount: int) -> void:
@@ -170,4 +194,5 @@ func reset_game() -> void:
 	saved_worker_amount = 0
 	saved_warrior_amount = 0
 	update_time = 0
+	autosave_elapsed = 0.0
 	get_tree().reload_current_scene()
