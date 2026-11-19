@@ -1,103 +1,33 @@
-# AntSource behavior and implementation plan
+# Ant source behavior
 
-## Purpose
+## Visuals and scene structure
 
-`AntSource` is the colony's on-screen ant emitter and coordinator. It owns a collection of independently moving ant particles. The initial test colony contains 14 ants across queen, worker, and warrior clusters.
+- Use `Polygon2D` ants and food; do not add imported game art.
+- `AntSource` owns the queen, worker, and warrior ants directly. Workers form logical leader/follower clusters capped at 10 ants each.
+- Queens and the first worker in every cluster spawn at `QUEEN_SPAWN_POSITION`, 32 pixels above the AntSource origin. Later workers join the current cluster and follow the ant before them.
+- Expired Queen Ant 1 workers remain as hollow shapes with a 1-pixel blue outline.
 
-## Ant appearance and states
+## Cluster foraging
 
-- Draw each ant at approximately 1 pixel wide by 2 pixels long.
-- Each ant has one of three states: `idle`, `walking`, or `gathering`.
-- `gathering` is part of the state model, but its behavior will be added when the food element is introduced. Until then, ants should not enter this state.
-- Main-game ant visuals must follow the project rule to use `Polygon2D` or particles; do not add imported art assets for ants.
+- Each cluster leader searches for the nearest live food source immediately when the cluster is initialized. If no source exists, the cluster scouts to a random point and searches again when it arrives. Followers trail in order.
+- Each worker harvests its own carry amount and waits at the source. Carrying workers return independently to points inside the 10 by 10 pixel square centered on the queen's spawn point, add their food to `GameState.food_amount`, then wait for the cluster to resume searching.
+- If a worker expires while carrying food, it drops that amount as a harvestable source at a random point inside the same queen-centered 10 by 10 pixel square. Each drop is represented by a 1 by 1 pixel polygon and can be harvested by another worker.
+- Food sources and dropped food use the `food_sources` group and expose `food_remaining` and `harvest(amount)`. Regular depleted sources respawn; depleted drops are removed without creating replacement sources.
 
-## Movement behavior
+## Queen Ant 1
 
-- On startup, the ants form a small colony around the source's center of mass.
-- Idle ants continually scatter to random points no more than 10 pixels from their individual idle anchors.
-- The first emitted worker is the worker-cluster leader. It chooses and walks toward a destination.
-- Remaining workers follow the worker emitted immediately before them, producing a worker leader-to-follower chain. Warriors form a separate scouting chain.
-- Workers scatter while idle during startup; after their first destination, their leader searches for food and the rest follow in order.
+- `scenes/queen_ant_1.tscn` uses the shared foraging system. Each queen spawns one worker every five seconds. The queen production upgrade increases this spawn rate; queens do not generate food directly.
+- Workers live for 30 seconds. Each worker-lifetime upgrade level adds 10 seconds to workers spawned afterward. Queen Ant 1 does not sell workers directly.
+- Carry adds one food per trip per level; speed adds 10% per level; food efficiency increases new source stockpiles by 10% per level.
 
-## Implementation plan
+## Incremental 1 and economy
 
-1. **Create the scene structure.** Keep `scenes/ant_source.tscn` as the reusable `AntSource` scene. Add a source controller and an ant visual/agent representation that can be instanced once per ant.
-2. **Represent each ant independently.** Give each ant a state, position, heading, and target. Use a small `Polygon2D` shape sized to approximately 1 by 2 pixels, oriented along its heading. This allows precise per-ant steering and state changes while complying with the visual constraint; avoid relying on a single opaque GPU particle effect for agents that need individual behavior.
-3. **Spawn the test colony.** Have `AntSource` create 14 agents in three clusters: one queen, 10 workers, and three warriors. Preserve emission order within the worker cluster so its first ant is the leader.
-4. **Add idle motion.** Give every idle ant a personal scatter anchor and keep its idle movement within 10 pixels of that anchor. Avoid abrupt jumps when switching between idle and walking.
-5. **Add leader and follower movement.** Give the leader a destination and move it toward that point. Make each worker and warrior follower trail its predecessor with a configurable spacing and smooth steering. Prevent followers from collapsing into the same position.
-6. **Define state transitions.** Implement `idle` and `walking` transitions now. Keep `gathering` declared and reserved for the later food interaction; do not invent gathering rules yet.
-7. **Integrate and inspect.** Instance `AntSource` in the main scene, then confirm visually that all 14 ants appear in separate clusters, the queen remains idle, workers seek food and follow in order, and warriors scout with idle pauses between destinations.
+- Incremental 1 keeps passive queen production and its worker purchase. Worker prices start at 5 food and grow by 1.25x; queen prices start at 1,000 and grow by 1.5x.
+- Upgrades start at 25 food and their independent next prices grow by 1.15x. Large UI values use K, M, and B abbreviations.
+- `GameState` owns food, counts, prices, upgrade levels, and the `user://game_state.json` save. New/reset games start with 250 food and one queen.
 
-## Completion criteria for this stage
+## Food source behavior
 
-- The reusable AntSource scene displays 14 ants (1 queen, 10 workers, 3 warriors) at roughly 1 by 2 pixels each.
-- The ant representation remains readable at the project's intended display scale.
-- Idle ants scatter within 10 pixels of their individual anchors without changing their `idle` state.
-- The first worker leads its cluster toward destinations; worker and warrior followers trail their own cluster leaders in emission order.
-- Ants have the three named states, while gathering behavior remains deferred until food exists.
-
-## Initial ant types
-
-- `queen`: white.
-- `worker`: blue.
-- `warrior`: dark red.
-- The prototype contains one queen, 10 workers, and three warriors in separate clusters. The first emitted worker leads the worker chain; the queen and warriors have separate behavior.
-
-## Food search behavior
-
-- After the colony completes its initial destination, the leader looks for the nearest `Node2D` in the `food_sources` group within `food_search_range` (default 120 pixels).
-- If a source is found, the leader walks to it and the remaining ants follow their predecessor.
-- If no source is in range, the leader picks a random scouting point within `food_search_range`; followers trail behind. After its idle pause, the colony searches again.
-- Each worker enters `gathering` when it reaches the food source, scatters within its 10-pixel anchor range during its gathering pause, then carries its own harvested food back to the queen.
-- Food source nodes should join the `food_sources` group. The search range is adjustable on `AntSource`.
-
-## Ant clusters and role behavior
-
-- `QueenCluster` contains one queen, positioned separately from the other clusters. The queen remains in the `idle` state and scatters within 10 pixels of her idle anchor.
-- Workers use the existing startup idle and destination walking behavior. Each worker gathers and returns food independently, then touches the queen cluster spawn point before depositing its carried food.
-- `WarriorCluster` contains three warriors. Its leader repeatedly scouts random destinations within `warrior_scout_range` (default 32 pixels) of the warrior cluster center, and the other warriors follow. Warriors use `walking` while scouting and pause in `idle` between destinations.
-- Cluster containers are separate children of `AntSource`; queen and warrior clusters have their own scene offsets.
-
-## Idle pause between destinations
-
-- Mobile ants remain in `idle` for `idle_pause_duration` (default 3 seconds) before starting their initial trip and after reaching each destination. Each ant scatters within 10 pixels of its idle anchor.
-- Warriors pause between scouting points, then continue scouting within their cluster range.
-- At a food source, each worker scatters while gathering, then walks to and touches the queen cluster spawn point to deliver its own food.
-- The queen stays idle at all times and scatters within her 10-pixel idle range.
-
-## Main scene composition
-
-- `MainScene.tscn` disables worker and warrior spawning on its `AntSource` instance, so the main scene shows only the queen. The reusable `AntSource` defaults still allow both clusters to spawn when enabled on other instances.
-
-## Global food amount
-
-- `GameState` is registered as an autoload in `project.godot`; `scripts/game_state.gd` owns the global integer `food_amount`, initially 0.
-- Use `GameState.add_food(amount)` to add positive amounts, or `GameState.spend_food(amount)` to deduct food when enough is available. `spend_food` reports success as a boolean. The counter is clamped at zero.
-- `food_changed(amount)` notifies listeners after assignments; the main scene's text label listens and shows `Food: <amount>` at the bottom of the viewport.
-- This shared counter is implemented, but food source nodes, worker gathering, and automatic food production remain deferred.
-
-## Worker group capacity and purchases
-
-- Worker purchases cost 100 food and are tracked in worker groups with a maximum of 100 ants per group.
-- When the current group reaches capacity, the next successful purchase starts a new group. The buy button is disabled when food is below 100, and purchasing is rejected without deducting food if the balance is insufficient.
-
-## Local game saves
-
-- `GameState` persists a JSON snapshot to `user://game_state.json`, which is in Godot's per-user application data directory.
-- Pressing the worker purchase button saves `update_time` (Unix time), `food_amount`, `queen_amount`, `worker_amount`, and `warrior_amount` after the purchase attempt.
-- At startup, a valid snapshot restores the food balance and ant counts. When no snapshot exists, `AntSource` uses its scene spawn settings and default counts.
-- Saving is currently triggered by the worker button; other gameplay changes are not written until that button is pressed.
-
-## First worker initialization
-
-- Do not assume `worker_ants` exists when `AntSource._ready()` runs; the main scene intentionally starts with only the queen.
-- Initialize worker behavior exactly once when the first ant is registered in the worker cluster. Set its idle behavior and startup pause at that point so the worker loop is ready for both scene-spawned workers and the first purchased worker.
-- Subsequent purchased workers join the worker collection and inherit the current walking or idle behavior.
-
-## Per-ant food gathering and delivery
-
-- Each worker begins gathering as soon as it reaches a food source. It scatters around that food-source position within its 10-pixel idle range during its own gathering pause.
-- Each worker harvests its own amount and carries it independently; the colony does not wait to deliver one shared food bundle.
-- After gathering, each worker walks to the queen cluster spawn point and snaps to that exact point before its carried food is added to `GameState`.
-- Workers resume searching after the ants carrying food have completed their individual deliveries and the colony pause has elapsed.
+- Regular sources are irregular polygons with 5, 6, 7, or 9 sides, 50–300 starting food, and a maximum diameter below 200 pixels.
+- Workers choose the nearest live source globally. Collection uses arrival and timers; do not add collision-based collection.
+- Keep food behind ants with the `FoodSources` container's negative z-index.

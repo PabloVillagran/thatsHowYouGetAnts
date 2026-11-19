@@ -1,30 +1,28 @@
 extends Node2D
 
 signal worker_count_changed(count: int)
+
 const ANT_SCENE: PackedScene = preload("res://scenes/ant.tscn")
 const FOOD_SOURCE_SCENE: PackedScene = preload("res://scenes/food_source.tscn")
+const FOOD_DROP_SCENE: PackedScene = preload("res://scenes/food_drop.tscn")
 const QUEEN_COUNT: int = 1
 const WORKER_COUNT: int = 10
 const WARRIOR_COUNT: int = 3
-const FOLLOW_DISTANCE: float = 4.0
 const ARRIVAL_TOLERANCE: float = 2.0
-const IDLE_SCATTER_RANGE: float = 10.0
-const MAX_GROUP_SIZE: int = 100
+const QUEEN_DROP_HALF_SIZE: float = 5.0
+const QUEEN_SPAWN_POSITION: Vector2 = Vector2(0.0, -32.0)
+const FOLLOW_DISTANCE: float = 1.0
+const MAX_WORKERS_PER_CLUSTER: int = 10
 
-@export var ant_speed: float = 28.0
+@export var ant_speed: float = 19.6
 @export var spawn_workers: bool = true
 @export var spawn_warriors: bool = true
-@export var leader_destination_distance: float = 72.0
-@export_range(1.0, 10.0, 0.5) var idle_pause_duration: float = 3.0
+@export var queen_ant_mode: bool = false
 @export_range(0.0, 10000.0, 1.0) var food_search_range: float = 120.0
-@export_range(0.0, 10000.0, 1.0) var warrior_scout_range: float = 32.0
 @export_range(0, 20, 1) var active_food_source_count: int = 3
 @export_range(1, 100, 1) var food_per_ant_per_trip: int = 1
 @export_range(1.0, 20.0, 0.5) var food_gather_pause_duration: float = 5.0
 
-@onready var queen_cluster: Node2D = $QueenCluster
-@onready var worker_cluster: Node2D = $WorkerCluster
-@onready var warrior_cluster: Node2D = $WarriorCluster
 @onready var food_sources_container: Node2D = $FoodSources
 
 var queen_ants: Array[AntParticle] = []
@@ -32,337 +30,358 @@ var worker_ants: Array[AntParticle] = []
 var worker_groups: Array = []
 var warrior_ants: Array[AntParticle] = []
 var random := RandomNumberGenerator.new()
-var worker_destination: Vector2
-var warrior_destination: Vector2
-var current_food_source: Node2D
-var worker_colony_is_walking: bool = false
-var startup_idle_remaining: float = 0.0
-var worker_idle_remaining: float = 0.0
-var warrior_idle_remaining: float = 0.0
-var worker_foraging_enabled: bool = false
-var worker_behavior_initialized: bool = false
-var worker_destination_handled: bool = false
+var queen_spawn_elapsed: float = 0.0
 
 
 func _ready() -> void:
+	GameState.queen_ant_mode_active = queen_ant_mode
 	random.randomize()
-	if get_tree().current_scene == get_parent():
-		position = get_viewport_rect().size * 0.5
+	# The camera frames the viewport center in both game scenes. Keep the
+	# shared spawn origin there regardless of how the scene was entered.
+	position = get_viewport_rect().size * 0.5
 	_spawn_colonies()
 	_spawn_initial_food_sources()
-	if not worker_ants.is_empty():
-		worker_groups.append(worker_ants.duplicate())
-	if not warrior_ants.is_empty():
-		_start_warrior_scouting()
+	for group_state in worker_groups:
+		_start_worker_group_foraging(group_state)
 
 
 func _process(delta: float) -> void:
-	_update_idle_group(queen_ants, delta)
-	_update_warrior_scouting(delta)
-	_update_worker_returns(delta)
-	if worker_colony_is_walking:
-		_update_worker_walking(delta)
-	else:
-		_update_idle_workers(delta)
-		if startup_idle_remaining > 0.0:
-			startup_idle_remaining = maxf(0.0, startup_idle_remaining - delta)
-			if startup_idle_remaining == 0.0:
-				_start_worker_walk()
+	if queen_ant_mode and not queen_ants.is_empty():
+		var spawn_interval := GameState.QUEEN_FOOD_INTERVAL / float(1 + GameState.queen_production_level)
+		queen_spawn_elapsed += delta * float(queen_ants.size())
+		while queen_spawn_elapsed >= spawn_interval:
+			queen_spawn_elapsed -= spawn_interval
+			_spawn_queen_worker()
+	_update_worker_lifetimes(delta)
+	_update_worker_groups(delta)
+	_update_idle_queens(delta)
+	_update_warriors(delta)
 
 
 func _spawn_colonies() -> void:
-	var worker_count := GameState.saved_worker_amount if GameState.has_saved_game else (WORKER_COUNT if spawn_workers else 0)
-	var queen_count := GameState.saved_queen_amount if GameState.has_saved_game else QUEEN_COUNT
-	var warrior_count := GameState.saved_warrior_amount if GameState.has_saved_game else (WARRIOR_COUNT if spawn_warriors else 0)
-	# Workers are created first, so the first emitted ant remains their leader.
-	var worker_direction := Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
-	for index in range(worker_count):
-		var ant := _create_ant(AntParticle.AntType.WORKER, worker_cluster)
-		ant.position = -worker_direction * FOLLOW_DISTANCE * index
-		ant.heading = worker_direction
-		ant.rotation = worker_direction.angle() - PI * 0.5
-		worker_ants.append(ant)
-		if worker_ants.size() == 1:
-			_initialize_worker_behavior()
-
-	for index in range(queen_count):
-		var queen := _create_ant(AntParticle.AntType.QUEEN, queen_cluster)
-		queen.position = Vector2.ZERO
+	var workers_to_spawn := GameState.saved_worker_amount if GameState.has_saved_game else (WORKER_COUNT if spawn_workers else 0)
+	var queens_to_spawn := GameState.saved_queen_amount if GameState.has_saved_game else QUEEN_COUNT
+	var warriors_to_spawn := GameState.saved_warrior_amount if GameState.has_saved_game else (WARRIOR_COUNT if spawn_warriors else 0)
+	for _index in range(queens_to_spawn):
+		var queen := _create_ant(AntParticle.AntType.QUEEN)
+		queen.position = QUEEN_SPAWN_POSITION
 		queen_ants.append(queen)
+	for _index in range(workers_to_spawn):
+		_register_worker(_create_ant(AntParticle.AntType.WORKER))
+	for _index in range(warriors_to_spawn):
+		var warrior := _create_ant(AntParticle.AntType.WARRIOR)
+		warrior.position = QUEEN_SPAWN_POSITION
+		warrior_ants.append(warrior)
+		_start_warrior_scouting(warrior)
+	_set_idle_queens()
+	GameState.queen_count = queen_ants.size()
+	GameState.worker_count = worker_ants.size()
+	GameState.warrior_count = warrior_ants.size()
 
-	var warrior_direction := Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
-	for index in range(warrior_count):
-		var ant := _create_ant(AntParticle.AntType.WARRIOR, warrior_cluster)
-		ant.position = -warrior_direction * FOLLOW_DISTANCE * index
-		ant.heading = warrior_direction
-		ant.rotation = warrior_direction.angle() - PI * 0.5
-		warrior_ants.append(ant)
 
-	_set_group_idle(queen_ants)
-	_set_group_idle(worker_ants)
-	_set_group_idle(warrior_ants)
-
-
-func _create_ant(ant_type, cluster: Node2D) -> AntParticle:
+func _create_ant(ant_type) -> AntParticle:
 	var ant := ANT_SCENE.instantiate() as AntParticle
 	ant.ant_type = ant_type
-	ant.move_speed = ant_speed
-	cluster.add_child(ant)
+	ant.move_speed = ant_speed * pow(1.1, GameState.speed_level)
+	add_child(ant)
 	return ant
 
 
-func _start_worker_walk() -> void:
-	if worker_ants.is_empty():
+func _register_worker(ant: AntParticle) -> void:
+	var group_state := _group_for_new_worker()
+	var group_ants: Array = group_state["ants"]
+	if group_ants.is_empty():
+		ant.position = QUEEN_SPAWN_POSITION
+		ant.heading = Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
+	else:
+		var predecessor := group_ants.back() as AntParticle
+		ant.position = predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+		ant.heading = predecessor.heading
+	ant.idle_anchor = ant.position
+	ant.rotation = ant.heading.angle() - PI * 0.5
+	worker_ants.append(ant)
+	group_ants.append(ant)
+	if queen_ant_mode:
+		ant.lifetime_remaining = 30.0 + 10.0 * GameState.worker_lifetime_level
+	if group_ants.size() == 1 and not food_sources_container.get_children().is_empty():
+		_start_worker_group_foraging(group_state)
+	elif group_state["walking"]:
+		ant.set_state(AntParticle.State.walking)
+	else:
+		ant.set_state(AntParticle.State.idle)
+		_assign_idle_target(ant)
+
+
+func _group_for_new_worker() -> Dictionary:
+	if worker_groups.is_empty():
+		return _create_worker_group()
+	var group_state: Dictionary = worker_groups.back()
+	var group_ants: Array = group_state["ants"]
+	if group_ants.size() >= MAX_WORKERS_PER_CLUSTER:
+		return _create_worker_group()
+	return group_state
+
+
+func _create_worker_group() -> Dictionary:
+	var group_state: Dictionary = {
+		"ants": [],
+		"destination": QUEEN_SPAWN_POSITION,
+		"food_source": null,
+		"walking": false,
+		"returning": false,
+		"idle_remaining": 0.0,
+		"destination_handled": false,
+	}
+	worker_groups.append(group_state)
+	return group_state
+
+
+func _spawn_queen_worker() -> void:
+	var worker := _create_ant(AntParticle.AntType.WORKER)
+	_register_worker(worker)
+	worker_count_changed.emit(worker_ants.size())
+	GameState.worker_count = worker_ants.size()
+	GameState.economy_changed.emit()
+
+
+func _update_worker_lifetimes(delta: float) -> void:
+	if not queen_ant_mode:
 		return
+	for ant in worker_ants.duplicate():
+		ant.lifetime_remaining -= delta
+		if ant.lifetime_remaining <= 0.0:
+			_remove_worker(ant)
 
-	var direction := Vector2.RIGHT.rotated(random.randf_range(0.0, TAU))
-	current_food_source = null
-	worker_destination = _center_of_mass(worker_ants) + direction * leader_destination_distance
-	_set_workers_walking()
 
-
-func _start_worker_foraging_walk() -> void:
-	if worker_ants.is_empty():
+func _remove_worker(ant: AntParticle) -> void:
+	# Only workers expire in Queen Ant 1; queens are permanent colony members.
+	if ant.ant_type != AntParticle.AntType.WORKER or not worker_ants.has(ant):
 		return
+	if ant.carried_food > 0:
+		_drop_carried_food(ant)
+	worker_ants.erase(ant)
+	for group_state in worker_groups:
+		var group_ants: Array = group_state["ants"]
+		if not group_ants.has(ant):
+			continue
+		var was_leader: bool = group_ants[0] == ant
+		group_ants.erase(ant)
+		if group_ants.is_empty():
+			group_state["walking"] = false
+			group_state["returning"] = false
+			group_state["food_source"] = null
+		elif was_leader and group_state["walking"]:
+			var new_leader := group_ants[0] as AntParticle
+			var trip_has_started := false
+			for member in group_ants:
+				var survivor := member as AntParticle
+				if survivor.has_reached_destination or survivor.carried_food > 0:
+					trip_has_started = true
+					break
+			if trip_has_started:
+				# Keep the current trip together when any follower has already
+				# reached or harvested at its destination.
+				new_leader.has_reached_destination = false
+				new_leader.set_target(group_state["destination"])
+			else:
+				# Before the group reaches the source, choose a fresh destination
+				# from the promoted leader's position.
+				_start_worker_group_foraging(group_state)
+		break
+	ant.mark_dead()
+	GameState.worker_count = worker_ants.size()
+	worker_count_changed.emit(worker_ants.size())
 
-	current_food_source = _nearest_food_source()
-	if current_food_source != null:
-		worker_destination = worker_cluster.to_local(current_food_source.global_position)
+
+func _drop_carried_food(ant: AntParticle) -> void:
+	var drop := FOOD_DROP_SCENE.instantiate() as Polygon2D
+	food_sources_container.add_child(drop)
+	drop.position = food_sources_container.to_local(_random_queen_drop_position())
+	drop.call("initialize", ant.carried_food)
+	drop.connect("depleted", _on_food_drop_depleted)
+
+
+func _random_queen_drop_position() -> Vector2:
+	var queen_position := to_global(QUEEN_SPAWN_POSITION)
+	var offset := Vector2(
+		random.randf_range(-QUEEN_DROP_HALF_SIZE, QUEEN_DROP_HALF_SIZE),
+		random.randf_range(-QUEEN_DROP_HALF_SIZE, QUEEN_DROP_HALF_SIZE)
+	)
+	return queen_position + offset
+
+
+func _start_worker_group_foraging(group_state: Dictionary) -> void:
+	var group_ants: Array = group_state["ants"]
+	if group_ants.is_empty():
+		return
+	var leader := group_ants[0] as AntParticle
+	var source := _nearest_food_source(leader.global_position)
+	group_state["food_source"] = source
+	if is_instance_valid(source):
+		group_state["destination"] = to_local(source.global_position)
 	else:
 		var angle := random.randf_range(0.0, TAU)
 		var radius := sqrt(random.randf()) * food_search_range
-		worker_destination = worker_ants[0].position + Vector2.RIGHT.rotated(angle) * radius
-	_set_workers_walking()
-
-
-func _set_workers_walking() -> void:
-	worker_destination_handled = false
-	worker_idle_remaining = 0.0
-	for ant in worker_ants:
+		group_state["destination"] = leader.position + Vector2.RIGHT.rotated(angle) * radius
+	group_state["walking"] = true
+	group_state["returning"] = false
+	group_state["destination_handled"] = false
+	group_state["idle_remaining"] = 0.0
+	for ant in group_ants:
 		ant.has_reached_destination = false
-	worker_ants[0].set_target(worker_destination)
-	worker_ants[0].set_state(AntParticle.State.walking)
-	for index in range(1, worker_ants.size()):
-		worker_ants[index].set_state(AntParticle.State.walking)
-	worker_colony_is_walking = true
+		ant.set_state(AntParticle.State.walking)
 
 
-func _update_worker_walking(delta: float) -> void:
-	if current_food_source != null:
-		if is_instance_valid(current_food_source):
-			worker_destination = worker_cluster.to_local(current_food_source.global_position)
-		else:
-			current_food_source = null
-
-	var leader := worker_ants[0]
-	if not leader.is_returning_food and leader.carried_food <= 0:
-		if not leader.has_reached_destination:
-			leader.set_target(worker_destination)
-			leader.move_step(delta)
-			if leader.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE:
-				_arrive_ant_at_destination(leader, worker_destination)
-				if current_food_source != null:
-					_collect_worker_food(leader)
-				else:
-					worker_idle_remaining = idle_pause_duration
-		else:
-			_update_idle_ant(leader, delta)
-			worker_idle_remaining = maxf(0.0, worker_idle_remaining - delta)
-			if worker_idle_remaining == 0.0 and current_food_source == null:
-				_start_worker_foraging_walk()
-				return
-
-	for index in range(1, worker_ants.size()):
-		var ant := worker_ants[index]
-		if ant.is_returning_food or ant.carried_food > 0:
+func _update_worker_groups(delta: float) -> void:
+	for group_state in worker_groups:
+		var group_ants: Array = group_state["ants"]
+		if group_ants.is_empty():
 			continue
-		if ant.has_reached_destination:
-			_update_idle_ant(ant, delta)
+		if group_state["returning"]:
+			_update_worker_group_returns(group_state, delta)
+		elif group_state["walking"]:
+			_update_worker_group_walking(group_state, delta)
+		elif group_state["idle_remaining"] > 0.0:
+			group_state["idle_remaining"] = maxf(0.0, group_state["idle_remaining"] - delta)
+			if group_state["idle_remaining"] == 0.0:
+				_start_worker_group_foraging(group_state)
+		else:
+			_start_worker_group_foraging(group_state)
+
+
+func _update_worker_group_walking(group_state: Dictionary, delta: float) -> void:
+	var group_ants: Array = group_state["ants"]
+	var source := group_state["food_source"] as Node2D
+	if group_state["food_source"] != null and not is_instance_valid(source):
+		_start_worker_group_foraging(group_state)
+		return
+	if is_instance_valid(source):
+		group_state["destination"] = to_local(source.global_position)
+	var destination: Vector2 = group_state["destination"]
+	for index in range(group_ants.size()):
+		var ant := group_ants[index] as AntParticle
+		if ant.carried_food > 0 or ant.has_reached_destination:
 			continue
-		var predecessor := worker_ants[index - 1]
-		var trail_target := worker_destination if predecessor.has_reached_destination else predecessor.position - predecessor.heading * FOLLOW_DISTANCE
-		ant.set_target(trail_target)
+		var target := destination
+		if index > 0:
+			var predecessor := group_ants[index - 1] as AntParticle
+			if not predecessor.has_reached_destination:
+				target = predecessor.position - predecessor.heading * FOLLOW_DISTANCE
+		ant.set_target(target)
 		ant.set_state(AntParticle.State.walking)
 		ant.move_step(delta)
-		if ant.position.distance_to(worker_destination) <= ARRIVAL_TOLERANCE:
-			_arrive_ant_at_destination(ant, worker_destination)
-			if current_food_source != null:
-				_collect_worker_food(ant)
-
-	for ant in worker_ants:
-		if not ant.has_reached_destination:
+		if ant.position.distance_to(destination) <= ARRIVAL_TOLERANCE:
+			ant.position = destination
+			ant.has_reached_destination = true
+			ant.set_state(AntParticle.State.idle)
+			ant.idle_anchor = destination
+			if is_instance_valid(source):
+				ant.carried_food = int(source.call("harvest", food_per_ant_per_trip + GameState.carry_capacity_level))
+				if ant.carried_food > 0:
+					ant.food_gather_remaining = food_gather_pause_duration
+					ant.set_state(AntParticle.State.gathering)
+		var all_arrived := true
+		for member in group_ants:
+			if not (member as AntParticle).has_reached_destination:
+				all_arrived = false
+				break
+		if all_arrived:
+			group_state["walking"] = false
+			if group_state["destination_handled"]:
+				return
+			group_state["destination_handled"] = true
+			var has_food := false
+			for member in group_ants:
+				if (member as AntParticle).carried_food > 0:
+					has_food = true
+					break
+			if has_food:
+				group_state["returning"] = true
+			else:
+				group_state["idle_remaining"] = 1.0
+				group_state["food_source"] = null
 			return
-	if worker_destination_handled:
-		return
-	worker_destination_handled = true
-	worker_foraging_enabled = true
-	current_food_source = null
-	worker_colony_is_walking = false
 
 
-func _collect_worker_food(ant: AntParticle) -> void:
-	if not is_instance_valid(current_food_source):
-		return
-	ant.carried_food = int(current_food_source.call("harvest", food_per_ant_per_trip))
-	if ant.carried_food <= 0:
-		return
-	ant.food_gather_remaining = food_gather_pause_duration
-	ant.idle_anchor = worker_destination
-	ant.set_state(AntParticle.State.gathering)
-	_assign_idle_target(ant)
-	worker_idle_remaining = food_gather_pause_duration
-
-
-func _update_worker_returns(delta: float) -> void:
-	var queen_position := worker_cluster.to_local(queen_cluster.global_position)
-	for ant in worker_ants:
-		if ant.carried_food > 0 and not ant.is_returning_food:
-			_update_idle_ant(ant, delta)
-			ant.food_gather_remaining = maxf(0.0, ant.food_gather_remaining - delta)
-			if ant.food_gather_remaining == 0.0:
-				ant.is_returning_food = true
-				ant.set_state(AntParticle.State.walking)
-				ant.set_target(queen_position)
+func _update_worker_group_returns(group_state: Dictionary, delta: float) -> void:
+	var group_ants: Array = group_state["ants"]
+	var carrying_count := 0
+	for ant in group_ants:
+		if ant.carried_food <= 0:
 			continue
+		carrying_count += 1
 		if not ant.is_returning_food:
-			continue
-		ant.set_target(queen_position)
+			ant.food_gather_remaining = maxf(0.0, ant.food_gather_remaining - delta)
+			if ant.food_gather_remaining > 0.0:
+				continue
+			ant.is_returning_food = true
+			ant.set_state(AntParticle.State.walking)
+			ant.set_target(to_local(_random_queen_drop_position()))
 		ant.move_step(delta)
-		if ant.position.distance_to(queen_position) <= ARRIVAL_TOLERANCE:
-			ant.position = queen_position
+		if ant.position.distance_to(ant.target_position) <= ARRIVAL_TOLERANCE:
+			ant.position = ant.target_position
 			GameState.add_food(ant.carried_food)
 			ant.carried_food = 0
 			ant.is_returning_food = false
-			ant.set_state(AntParticle.State.idle)
-			ant.idle_anchor = queen_position
-			_assign_idle_target(ant)
+			ant.has_reached_destination = false
+	if carrying_count == 0:
+		group_state["returning"] = false
+		group_state["food_source"] = null
+		_start_worker_group_foraging(group_state)
 
 
-func _update_idle_workers(delta: float) -> void:
-	_update_idle_group(worker_ants, delta)
-	if not worker_foraging_enabled:
-		return
-	for ant in worker_ants:
-		if ant.is_returning_food or ant.carried_food > 0:
-			return
-	if worker_idle_remaining > 0.0:
-		worker_idle_remaining = maxf(0.0, worker_idle_remaining - delta)
-		if worker_idle_remaining > 0.0:
-			return
-	_start_worker_foraging_walk()
-
-
-func _start_warrior_scouting() -> void:
-	warrior_idle_remaining = idle_pause_duration
-
-
-func _choose_warrior_destination() -> void:
-	var angle := random.randf_range(0.0, TAU)
-	var radius := sqrt(random.randf()) * warrior_scout_range
-	warrior_destination = Vector2.RIGHT.rotated(angle) * radius
-	for ant in warrior_ants:
-		ant.has_reached_destination = false
-	warrior_ants[0].set_target(warrior_destination)
-	for ant in warrior_ants:
-		ant.set_state(AntParticle.State.walking)
-
-
-func _update_warrior_scouting(delta: float) -> void:
-	if warrior_ants.is_empty():
-		return
-	if warrior_idle_remaining > 0.0 and not warrior_ants[0].has_reached_destination:
-		_update_idle_group(warrior_ants, delta)
-		warrior_idle_remaining = maxf(0.0, warrior_idle_remaining - delta)
-		if warrior_idle_remaining == 0.0:
-			_choose_warrior_destination()
-		return
-
-	var leader := warrior_ants[0]
-	if not leader.has_reached_destination:
-		leader.set_target(warrior_destination)
-		leader.move_step(delta)
-		if leader.position.distance_to(warrior_destination) <= ARRIVAL_TOLERANCE:
-			_arrive_ant_at_destination(leader, warrior_destination)
-			warrior_idle_remaining = idle_pause_duration
-	else:
-		_update_idle_ant(leader, delta)
-		warrior_idle_remaining = maxf(0.0, warrior_idle_remaining - delta)
-		if warrior_idle_remaining == 0.0:
-			_choose_warrior_destination()
-			return
-
-	for index in range(1, warrior_ants.size()):
-		var ant := warrior_ants[index]
-		if ant.has_reached_destination:
-			_update_idle_ant(ant, delta)
-			continue
-		var predecessor := warrior_ants[index - 1]
-		var trail_target := warrior_destination if predecessor.has_reached_destination else predecessor.position - predecessor.heading * FOLLOW_DISTANCE
-		ant.set_target(trail_target)
-		ant.set_state(AntParticle.State.walking)
-		ant.move_step(delta)
-		if ant.position.distance_to(warrior_destination) <= ARRIVAL_TOLERANCE:
-			_arrive_ant_at_destination(ant, warrior_destination)
-
-
-func _arrive_ant_at_destination(ant: AntParticle, destination: Vector2) -> void:
-	ant.position = destination
-	ant.has_reached_destination = true
-	ant.set_state(AntParticle.State.idle)
-	ant.idle_anchor = destination
-	_assign_idle_target(ant)
-
-
-func _update_idle_ant(ant: AntParticle, delta: float) -> void:
-	if ant.is_at_target(ARRIVAL_TOLERANCE):
-		_assign_idle_target(ant)
-	ant.move_step(delta)
-
-
-func _set_group_idle(group: Array[AntParticle]) -> void:
-	for ant in group:
-		ant.set_state(AntParticle.State.idle)
-		ant.idle_anchor = ant.position
-		_assign_idle_target(ant)
-
-
-func _update_idle_group(group: Array[AntParticle], delta: float) -> void:
-	for ant in group:
-		if ant.state != AntParticle.State.idle:
-			continue
-		if ant.is_at_target(ARRIVAL_TOLERANCE):
-			_assign_idle_target(ant)
-		ant.move_step(delta)
-
-
-func _assign_idle_target(ant: AntParticle) -> void:
-	var angle := random.randf_range(0.0, TAU)
-	var radius := sqrt(random.randf()) * IDLE_SCATTER_RANGE
-	ant.set_target(ant.idle_anchor + Vector2.RIGHT.rotated(angle) * radius)
-
-
-func _nearest_food_source() -> Node2D:
-	var leader := worker_ants[0]
+func _nearest_food_source(origin: Vector2) -> Node2D:
 	var nearest: Node2D
 	var nearest_distance := INF
 	for candidate in get_tree().get_nodes_in_group("food_sources"):
 		var source := candidate as Node2D
-		if source == null:
+		if source == null or int(source.get("food_remaining")) <= 0:
 			continue
-		if int(source.get("food_remaining")) <= 0:
-			continue
-		var distance := leader.global_position.distance_to(source.global_position)
-		if nearest == null or distance < nearest_distance:
+		var distance := origin.distance_to(source.global_position)
+		if distance < nearest_distance:
 			nearest = source
 			nearest_distance = distance
 	return nearest
 
 
-func _center_of_mass(group: Array[AntParticle]) -> Vector2:
-	var center := Vector2.ZERO
-	for ant in group:
-		center += ant.position
-	return center / float(group.size())
+func _set_idle_queens() -> void:
+	for queen in queen_ants:
+		queen.set_state(AntParticle.State.idle)
+		queen.idle_anchor = queen.position
+		_assign_idle_target(queen)
+
+
+func _update_idle_queens(delta: float) -> void:
+	for queen in queen_ants:
+		if queen.state == AntParticle.State.idle:
+			if queen.is_at_target(ARRIVAL_TOLERANCE):
+				_assign_idle_target(queen)
+			queen.move_step(delta)
+
+
+func _start_warrior_scouting(warrior: AntParticle) -> void:
+	warrior.idle_anchor = QUEEN_SPAWN_POSITION
+	warrior.set_state(AntParticle.State.walking)
+	_choose_warrior_destination(warrior)
+
+
+func _choose_warrior_destination(warrior: AntParticle) -> void:
+	var angle := random.randf_range(0.0, TAU)
+	var radius := sqrt(random.randf()) * food_search_range
+	warrior.set_target(warrior.idle_anchor + Vector2.RIGHT.rotated(angle) * radius)
+
+
+func _update_warriors(delta: float) -> void:
+	for warrior in warrior_ants:
+		warrior.move_step(delta)
+		if warrior.is_at_target(ARRIVAL_TOLERANCE):
+			_choose_warrior_destination(warrior)
+
+
+func _assign_idle_target(ant: AntParticle) -> void:
+	var angle := random.randf_range(0.0, TAU)
+	var radius := sqrt(random.randf()) * 10.0
+	ant.set_target(ant.idle_anchor + Vector2.RIGHT.rotated(angle) * radius)
 
 
 func _spawn_initial_food_sources() -> void:
@@ -374,7 +393,7 @@ func _spawn_food_source() -> void:
 	var source := FOOD_SOURCE_SCENE.instantiate() as Node2D
 	source.connect("depleted", _on_food_source_depleted)
 	food_sources_container.add_child(source)
-	source.call("initialize", random)
+	source.call("initialize", random, 1.0 + 0.1 * GameState.food_efficiency_level)
 	var angle := random.randf_range(0.0, TAU)
 	var radius := random.randf_range(food_search_range * 0.45, food_search_range)
 	source.position = Vector2.RIGHT.rotated(angle) * radius
@@ -384,46 +403,63 @@ func _on_food_source_depleted(_source: Node2D) -> void:
 	_spawn_food_source()
 
 
-func _initialize_worker_behavior() -> void:
-	if worker_behavior_initialized or worker_ants.is_empty():
-		return
-	worker_behavior_initialized = true
-	current_food_source = null
-	worker_colony_is_walking = false
-	worker_foraging_enabled = false
-	worker_idle_remaining = 0.0
-	startup_idle_remaining = idle_pause_duration
-	_set_group_idle(worker_ants)
+func _on_food_drop_depleted(_drop: Node2D) -> void:
+	return
 
 
 func purchase_worker() -> bool:
-	if not GameState.spend_food(100):
+	if not GameState.spend_food(GameState.worker_cost):
 		return false
-
-	var first_worker := worker_ants.is_empty()
-	var worker := _create_ant(AntParticle.AntType.WORKER, worker_cluster)
-	if worker_groups.is_empty():
-		worker_groups.append(worker_ants.duplicate())
-	if worker_groups.back().size() >= MAX_GROUP_SIZE:
-		worker_groups.append([])
-	var current_group: Array = worker_groups.back()
-
-	if first_worker:
-		worker.position = Vector2.ZERO
-	else:
-		var predecessor := worker_ants[worker_ants.size() - 1]
-		worker.position = predecessor.position - predecessor.heading * FOLLOW_DISTANCE
-
-	worker_ants.append(worker)
-	current_group.append(worker)
+	GameState.worker_cost = GameState.next_cost(GameState.worker_cost, 1.25)
+	_register_worker(_create_ant(AntParticle.AntType.WORKER))
 	worker_count_changed.emit(worker_ants.size())
+	GameState.economy_changed.emit()
+	return true
 
-	if first_worker:
-		_initialize_worker_behavior()
-	elif worker_colony_is_walking:
-		worker.set_state(AntParticle.State.walking)
-	else:
-		worker.set_state(AntParticle.State.idle)
-		worker.idle_anchor = worker.position
-		_assign_idle_target(worker)
+
+func purchase_queen() -> bool:
+	if not GameState.spend_food(GameState.queen_cost):
+		return false
+	GameState.queen_cost = GameState.next_cost(GameState.queen_cost, 1.5)
+	var queen := _create_ant(AntParticle.AntType.QUEEN)
+	queen.position = QUEEN_SPAWN_POSITION
+	queen_ants.append(queen)
+	queen.set_state(AntParticle.State.idle)
+	queen.idle_anchor = queen.position
+	_assign_idle_target(queen)
+	GameState.queen_count = queen_ants.size()
+	GameState.economy_changed.emit()
+	return true
+
+
+func purchase_upgrade(upgrade: String) -> bool:
+	var cost: int
+	match upgrade:
+		"queen_production": cost = GameState.queen_production_cost
+		"carry_capacity": cost = GameState.carry_capacity_cost
+		"speed": cost = GameState.speed_cost
+		"food_efficiency": cost = GameState.food_efficiency_cost
+		"worker_lifetime": cost = GameState.worker_lifetime_cost
+		_: return false
+	if not GameState.spend_food(cost):
+		return false
+	match upgrade:
+		"queen_production":
+			GameState.queen_production_level += 1
+			GameState.queen_production_cost = GameState.next_cost(cost, 1.15)
+		"carry_capacity":
+			GameState.carry_capacity_level += 1
+			GameState.carry_capacity_cost = GameState.next_cost(cost, 1.15)
+		"speed":
+			GameState.speed_level += 1
+			GameState.speed_cost = GameState.next_cost(cost, 1.15)
+			for ant in queen_ants + worker_ants + warrior_ants:
+				ant.move_speed = ant_speed * pow(1.1, GameState.speed_level)
+		"food_efficiency":
+			GameState.food_efficiency_level += 1
+			GameState.food_efficiency_cost = GameState.next_cost(cost, 1.15)
+		"worker_lifetime":
+			GameState.worker_lifetime_level += 1
+			GameState.worker_lifetime_cost = GameState.next_cost(cost, 1.15)
+	GameState.economy_changed.emit()
 	return true

@@ -1,43 +1,44 @@
-[gd_scene load_steps=9 format=3 uid="uid://chep5rfev6ong"]
+[gd_scene format=3 uid="uid://chep5rfev6ong"]
 
 [ext_resource type="PackedScene" uid="uid://bbpd0qixrry85" path="res://scenes/ant_source.tscn" id="1_3mqji"]
-[ext_resource type="Script" path="res://scripts/game_camera.gd" id="2_camera"]
-[ext_resource type="Script" path="res://scripts/food_amount_label.gd" id="3_food_label"]
-[ext_resource type="Script" path="res://scripts/buy_worker_button.gd" id="4_buy_worker"]
-[ext_resource type="Script" path="res://scripts/reset_button.gd" id="5_reset_button"]
+[ext_resource type="Script" uid="uid://fbcat0ek4doo" path="res://scripts/game_camera.gd" id="2_camera"]
+[ext_resource type="Script" uid="uid://sy4c7g4uf4hc" path="res://scripts/food_amount_label.gd" id="3_food_label"]
+[ext_resource type="Script" uid="uid://e35pw88ad8vv" path="res://scripts/economy_purchase_button.gd" id="4_economy_button"]
+[ext_resource type="Script" uid="uid://dhpuxqf1puobr" path="res://scripts/reset_button.gd" id="5_reset_button"]
+[ext_resource type="Script" path="res://scripts/ant_counter.gd" id="6_ant_counter"]
 
 [sub_resource type="StyleBoxFlat" id="ResetButtonNormal"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
 bg_color = Color(0.72, 0.08, 0.08, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-content_margin_left = 14.0
-content_margin_top = 8.0
-content_margin_right = 14.0
-content_margin_bottom = 8.0
-
-[sub_resource type="StyleBoxFlat" id="ResetButtonHover"]
-bg_color = Color(0.88, 0.12, 0.12, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-content_margin_left = 14.0
-content_margin_top = 8.0
-content_margin_right = 14.0
-content_margin_bottom = 8.0
 
 [sub_resource type="StyleBoxFlat" id="ResetButtonPressed"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
 bg_color = Color(0.52, 0.04, 0.04, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="ResetButtonHover"]
 content_margin_left = 14.0
 content_margin_top = 8.0
 content_margin_right = 14.0
 content_margin_bottom = 8.0
+bg_color = Color(0.88, 0.12, 0.12, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
 
 [node name="Node2D" type="Node2D" unique_id=1883920748]
 
@@ -45,15 +46,14 @@ content_margin_bottom = 8.0
 spawn_workers = false
 spawn_warriors = false
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=787395391]
 position = Vector2(360, 640)
 script = ExtResource("2_camera")
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=1249135530]
 
-[node name="FoodAmount" type="Label" parent="UI"]
+[node name="FoodAmount" type="Label" parent="UI" unique_id=1707143307]
 anchors_preset = 12
-anchor_left = 0.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -61,7 +61,6 @@ offset_top = -72.0
 offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 0
-mouse_filter = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 28
 text = "Food: 0"
@@ -69,27 +68,76 @@ horizontal_alignment = 1
 vertical_alignment = 1
 script = ExtResource("3_food_label")
 
-[node name="BuyWorkerButton" type="Button" parent="UI"]
-anchors_preset = 7
-anchor_left = 0.5
+[node name="AntCounter" type="Label" parent="UI"]
+anchors_preset = 12
 anchor_top = 1.0
-anchor_right = 0.5
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -150.0
-offset_top = -128.0
-offset_right = 150.0
-offset_bottom = -80.0
+offset_top = -120.0
+offset_bottom = -72.0
 grow_horizontal = 2
-grow_vertical = 0
-text = "Buy Worker (100 Food)"
-script = ExtResource("4_buy_worker")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Live ants: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_ant_counter")
 
-[node name="ResetButton" type="Button" parent="UI"]
+[node name="PurchaseMenu" type="VBoxContainer" parent="UI" unique_id=601952124]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 84.0
+offset_right = -24.0
+offset_bottom = 510.0
+grow_horizontal = 2
+theme_override_constants/separation = 6
+
+[node name="BuyWorkerButton" type="Button" parent="UI/PurchaseMenu" unique_id=2143398391]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Buy Worker"
+script = ExtResource("4_economy_button")
+
+[node name="BuyQueenButton" type="Button" parent="UI/PurchaseMenu" unique_id=940334877]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Buy Queen"
+script = ExtResource("4_economy_button")
+purchase_kind = "queen"
+
+[node name="QueenProductionButton" type="Button" parent="UI/PurchaseMenu" unique_id=1714081253]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Queen Production"
+script = ExtResource("4_economy_button")
+purchase_kind = "queen_production"
+
+[node name="CarryCapacityButton" type="Button" parent="UI/PurchaseMenu" unique_id=1673190365]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Worker Carry"
+script = ExtResource("4_economy_button")
+purchase_kind = "carry_capacity"
+
+[node name="AntSpeedButton" type="Button" parent="UI/PurchaseMenu" unique_id=1602166446]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Ant Speed"
+script = ExtResource("4_economy_button")
+purchase_kind = "speed"
+
+[node name="FoodEfficiencyButton" type="Button" parent="UI/PurchaseMenu" unique_id=1792081057]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Food Source Stockpile"
+script = ExtResource("4_economy_button")
+purchase_kind = "food_efficiency"
+
+[node name="ResetButton" type="Button" parent="UI" unique_id=567003580]
 anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 0.0
 anchor_right = 0.5
-anchor_bottom = 0.0
 offset_left = -120.0
 offset_top = 20.0
 offset_right = 120.0
@@ -98,7 +146,7 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("ResetButtonNormal")
-theme_override_styles/hover = SubResource("ResetButtonHover")
 theme_override_styles/pressed = SubResource("ResetButtonPressed")
+theme_override_styles/hover = SubResource("ResetButtonHover")
 text = "Reset Game"
 script = ExtResource("5_reset_button")

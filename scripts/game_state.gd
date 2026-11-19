@@ -1,9 +1,14 @@
 extends Node
 
 signal food_changed(amount: int)
+signal economy_changed
 
 const QUEEN_FOOD_INTERVAL: float = 5.0
 const STARTING_FOOD: int = 250
+const WORKER_START_COST: int = 5
+const QUEEN_START_COST: int = 1000
+const UPGRADE_START_COST: int = 25
+const MAX_PURCHASE_COST: int = 2000000000
 const SAVE_PATH: String = "user://game_state.json"
 
 var food_amount: int = STARTING_FOOD:
@@ -12,6 +17,22 @@ var food_amount: int = STARTING_FOOD:
 		food_changed.emit(food_amount)
 
 var queen_food_elapsed: float = 0.0
+var queen_ant_mode_active: bool = false
+var queen_count: int = 1
+var worker_count: int = 0
+var warrior_count: int = 0
+var worker_cost: int = WORKER_START_COST
+var queen_cost: int = QUEEN_START_COST
+var queen_production_level: int = 0
+var carry_capacity_level: int = 0
+var speed_level: int = 0
+var food_efficiency_level: int = 0
+var queen_production_cost: int = UPGRADE_START_COST
+var carry_capacity_cost: int = UPGRADE_START_COST
+var speed_cost: int = UPGRADE_START_COST
+var food_efficiency_cost: int = UPGRADE_START_COST
+var worker_lifetime_level: int = 0
+var worker_lifetime_cost: int = UPGRADE_START_COST
 var has_saved_game: bool = false
 var saved_queen_amount: int = 1
 var saved_worker_amount: int = 0
@@ -24,10 +45,12 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if queen_ant_mode_active:
+		return
 	queen_food_elapsed += delta
 	while queen_food_elapsed >= QUEEN_FOOD_INTERVAL:
 		queen_food_elapsed -= QUEEN_FOOD_INTERVAL
-		add_food(1)
+		add_food(queen_count * (1 + queen_production_level))
 
 
 func add_food(amount: int) -> void:
@@ -42,13 +65,32 @@ func spend_food(amount: int) -> bool:
 	return true
 
 
+func next_cost(cost: int, multiplier: float) -> int:
+	return mini(MAX_PURCHASE_COST, int(ceil(float(cost) * multiplier)))
+
+
 func save_game(queen_amount: int, worker_amount: int, warrior_amount: int) -> void:
+	queen_count = queen_amount
+	worker_count = worker_amount
+	warrior_count = warrior_amount
 	var state := {
 		"update_time": int(Time.get_unix_time_from_system()),
 		"food_amount": food_amount,
 		"queen_amount": queen_amount,
 		"worker_amount": worker_amount,
 		"warrior_amount": warrior_amount,
+		"worker_cost": worker_cost,
+		"queen_cost": queen_cost,
+		"queen_production_level": queen_production_level,
+		"carry_capacity_level": carry_capacity_level,
+		"speed_level": speed_level,
+		"food_efficiency_level": food_efficiency_level,
+		"queen_production_cost": queen_production_cost,
+		"carry_capacity_cost": carry_capacity_cost,
+		"speed_cost": speed_cost,
+		"food_efficiency_cost": food_efficiency_cost,
+		"worker_lifetime_level": worker_lifetime_level,
+		"worker_lifetime_cost": worker_lifetime_cost,
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -76,10 +118,27 @@ func _load_game() -> void:
 	var state: Dictionary = parsed
 	food_amount = maxi(0, int(state.get("food_amount", 0)))
 	update_time = int(state.get("update_time", 0))
-	saved_queen_amount = maxi(0, int(state.get("queen_amount", 1)))
+	# A playable colony always needs at least its starting queen.
+	saved_queen_amount = maxi(1, int(state.get("queen_amount", 1)))
 	saved_worker_amount = maxi(0, int(state.get("worker_amount", 0)))
 	saved_warrior_amount = maxi(0, int(state.get("warrior_amount", 0)))
+	queen_count = saved_queen_amount
+	worker_count = saved_worker_amount
+	warrior_count = saved_warrior_amount
+	worker_cost = maxi(1, int(state.get("worker_cost", WORKER_START_COST)))
+	queen_cost = maxi(1, int(state.get("queen_cost", QUEEN_START_COST)))
+	queen_production_level = maxi(0, int(state.get("queen_production_level", 0)))
+	carry_capacity_level = maxi(0, int(state.get("carry_capacity_level", 0)))
+	speed_level = maxi(0, int(state.get("speed_level", 0)))
+	food_efficiency_level = maxi(0, int(state.get("food_efficiency_level", 0)))
+	queen_production_cost = maxi(1, int(state.get("queen_production_cost", UPGRADE_START_COST)))
+	carry_capacity_cost = maxi(1, int(state.get("carry_capacity_cost", UPGRADE_START_COST)))
+	speed_cost = maxi(1, int(state.get("speed_cost", UPGRADE_START_COST)))
+	food_efficiency_cost = maxi(1, int(state.get("food_efficiency_cost", UPGRADE_START_COST)))
+	worker_lifetime_level = maxi(0, int(state.get("worker_lifetime_level", 0)))
+	worker_lifetime_cost = maxi(1, int(state.get("worker_lifetime_cost", UPGRADE_START_COST)))
 	has_saved_game = true
+	economy_changed.emit()
 
 
 func reset_game() -> void:
@@ -91,6 +150,21 @@ func reset_game() -> void:
 
 	food_amount = STARTING_FOOD
 	queen_food_elapsed = 0.0
+	queen_count = 1
+	worker_count = 0
+	warrior_count = 0
+	worker_cost = WORKER_START_COST
+	queen_cost = QUEEN_START_COST
+	queen_production_level = 0
+	carry_capacity_level = 0
+	speed_level = 0
+	food_efficiency_level = 0
+	queen_production_cost = UPGRADE_START_COST
+	carry_capacity_cost = UPGRADE_START_COST
+	speed_cost = UPGRADE_START_COST
+	food_efficiency_cost = UPGRADE_START_COST
+	worker_lifetime_level = 0
+	worker_lifetime_cost = UPGRADE_START_COST
 	has_saved_game = false
 	saved_queen_amount = 1
 	saved_worker_amount = 0

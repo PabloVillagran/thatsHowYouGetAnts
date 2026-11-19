@@ -1,0 +1,108 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/ant_source.tscn" id="1_source"]
+[ext_resource type="Script" path="res://scripts/game_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/food_amount_label.gd" id="3_food"]
+[ext_resource type="Script" path="res://scripts/economy_purchase_button.gd" id="4_purchase"]
+[ext_resource type="Script" path="res://scripts/reset_button.gd" id="5_reset"]
+[ext_resource type="Script" path="res://scripts/ant_counter.gd" id="6_ant_counter"]
+
+[node name="QueenAnt1" type="Node2D"]
+
+[node name="AntSource" parent="." instance=ExtResource("1_source")]
+queen_ant_mode = true
+spawn_workers = false
+spawn_warriors = false
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(360, 640)
+script = ExtResource("2_camera")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="FoodAmount" type="Label" parent="UI"]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -72.0
+offset_bottom = -24.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 28
+text = "Food: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("3_food")
+
+[node name="AntCounter" type="Label" parent="UI"]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -120.0
+offset_bottom = -72.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 24
+text = "Live ants: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("6_ant_counter")
+
+[node name="PurchaseMenu" type="VBoxContainer" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 84.0
+offset_right = -24.0
+offset_bottom = 430.0
+grow_horizontal = 2
+theme_override_constants/separation = 6
+
+[node name="BuyQueenButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "queen"
+
+[node name="QueenProductionButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "queen_production"
+
+[node name="CarryCapacityButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "carry_capacity"
+
+[node name="AntSpeedButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "speed"
+
+[node name="FoodEfficiencyButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "food_efficiency"
+
+[node name="WorkerLifetimeButton" type="Button" parent="UI/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "worker_lifetime"
+
+[node name="ResetButton" type="Button" parent="UI"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 20.0
+offset_right = 120.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+text = "Reset Game"
+script = ExtResource("5_reset")

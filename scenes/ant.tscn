@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ant_particle.gd" id="1_ant"]
 
 [node name="Ant" type="Polygon2D"]
-polygon = PackedVector2Array(-0.5, -1, 0.5, -1, 0.5, 1, -0.5, 1)
+polygon = PackedVector2Array(-2, -4, 2, -4, 2, 4, -2, 4)
 color = Color(0.18, 0.45, 0.95, 1)
 script = ExtResource("1_ant")
 ant_type = 1

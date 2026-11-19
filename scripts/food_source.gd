@@ -14,9 +14,9 @@ var _depletion_step: int = 0
 var _is_depleted: bool = false
 
 
-func initialize(random: RandomNumberGenerator) -> void:
+func initialize(random: RandomNumberGenerator, food_multiplier: float = 1.0) -> void:
 	var sides := SIDE_COUNTS[random.randi_range(0, SIDE_COUNTS.size() - 1)]
-	starting_food = random.randi_range(MIN_FOOD, MAX_FOOD)
+	starting_food = int(ceil(random.randi_range(MIN_FOOD, MAX_FOOD) * food_multiplier))
 	food_remaining = starting_food
 	var points := PackedVector2Array()
 	var base_angle := random.randf_range(0.0, TAU)
@@ -25,7 +25,7 @@ func initialize(random: RandomNumberGenerator) -> void:
 		var vertex_radius := random.randf_range(0.72, 1.0)
 		points.append(Vector2.RIGHT.rotated(angle) * vertex_radius)
 	polygon = points
-	var size_ratio := float(starting_food - MIN_FOOD) / float(MAX_FOOD - MIN_FOOD)
+	var size_ratio := clampf(float(starting_food - MIN_FOOD) / float(MAX_FOOD - MIN_FOOD), 0.0, 1.0)
 	var radius := lerpf(MIN_RADIUS, MAX_RADIUS, size_ratio)
 	scale = Vector2.ONE * radius
 	color = Color(0.88, 0.58, 0.16, 1.0)
@@ -53,5 +53,5 @@ func _finish_depletion() -> void:
 
 
 func _base_radius() -> float:
-	var size_ratio := float(starting_food - MIN_FOOD) / float(MAX_FOOD - MIN_FOOD)
+	var size_ratio := clampf(float(starting_food - MIN_FOOD) / float(MAX_FOOD - MIN_FOOD), 0.0, 1.0)
 	return lerpf(MIN_RADIUS, MAX_RADIUS, size_ratio)

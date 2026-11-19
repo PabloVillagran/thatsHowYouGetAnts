@@ -5,13 +5,5 @@
 [node name="AntSource" type="Node2D" unique_id=437055582]
 script = ExtResource("1_source")
 
-[node name="QueenCluster" type="Node2D" parent="." unique_id=1243102091]
-position = Vector2(0, -32)
-
-[node name="WorkerCluster" type="Node2D" parent="." unique_id=2077031641]
-
-[node name="WarriorCluster" type="Node2D" parent="." unique_id=814287650]
-position = Vector2(0, 32)
-
 [node name="FoodSources" type="Node2D" parent="."]
 z_index = -1
