@@ -12,6 +12,17 @@ func _ready() -> void:
 	_update_minimum_zoom()
 
 
+func recenter_on_colony() -> void:
+	var ant_source := get_parent().get_node_or_null("AntSource")
+	if ant_source == null:
+		return
+	var queen_ants: Array = ant_source.get("queen_ants")
+	if not queen_ants.is_empty() and is_instance_valid(queen_ants[0]):
+		position = queen_ants[0].global_position
+	else:
+		position = ant_source.global_position
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		_handle_screen_touch(event)

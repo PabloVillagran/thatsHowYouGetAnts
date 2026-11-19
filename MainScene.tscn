@@ -4,41 +4,9 @@
 [ext_resource type="Script" uid="uid://fbcat0ek4doo" path="res://scripts/game_camera.gd" id="2_camera"]
 [ext_resource type="Script" uid="uid://sy4c7g4uf4hc" path="res://scripts/food_amount_label.gd" id="3_food_label"]
 [ext_resource type="Script" uid="uid://e35pw88ad8vv" path="res://scripts/economy_purchase_button.gd" id="4_economy_button"]
-[ext_resource type="Script" uid="uid://dhpuxqf1puobr" path="res://scripts/reset_button.gd" id="5_reset_button"]
 [ext_resource type="Script" path="res://scripts/ant_counter.gd" id="6_ant_counter"]
-
-[sub_resource type="StyleBoxFlat" id="ResetButtonNormal"]
-content_margin_left = 14.0
-content_margin_top = 8.0
-content_margin_right = 14.0
-content_margin_bottom = 8.0
-bg_color = Color(0.72, 0.08, 0.08, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-
-[sub_resource type="StyleBoxFlat" id="ResetButtonPressed"]
-content_margin_left = 14.0
-content_margin_top = 8.0
-content_margin_right = 14.0
-content_margin_bottom = 8.0
-bg_color = Color(0.52, 0.04, 0.04, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-
-[sub_resource type="StyleBoxFlat" id="ResetButtonHover"]
-content_margin_left = 14.0
-content_margin_top = 8.0
-content_margin_right = 14.0
-content_margin_bottom = 8.0
-bg_color = Color(0.88, 0.12, 0.12, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+[ext_resource type="Script" path="res://scripts/return_to_menu_button.gd" id="7_menu_button"]
+[ext_resource type="Script" path="res://scripts/recenter_button.gd" id="8_recenter_button"]
 
 [node name="Node2D" type="Node2D" unique_id=1883920748]
 
@@ -134,7 +102,7 @@ text = "Food Source Stockpile"
 script = ExtResource("4_economy_button")
 purchase_kind = "food_efficiency"
 
-[node name="ResetButton" type="Button" parent="UI" unique_id=567003580]
+[node name="RecenterButton" type="Button" parent="UI" unique_id=567003580]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
@@ -145,8 +113,16 @@ offset_bottom = 68.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_styles/normal = SubResource("ResetButtonNormal")
-theme_override_styles/pressed = SubResource("ResetButtonPressed")
-theme_override_styles/hover = SubResource("ResetButtonHover")
-text = "Reset Game"
-script = ExtResource("5_reset_button")
+text = "Recenter Colony"
+
+[node name="MainMenuButton" type="Button" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 68.0
+grow_horizontal = 0
+text = "Main Menu"
+script = ExtResource("7_menu_button")

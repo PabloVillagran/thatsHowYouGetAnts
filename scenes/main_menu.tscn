@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
+[ext_resource type="Script" path="res://scripts/reset_button.gd" id="2_reset"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -47,3 +48,11 @@ custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Queen Ant 1"
+
+[node name="ResetButton" type="Button" parent="CenterContainer/Menu"]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Reset Game"
+script = ExtResource("2_reset")
