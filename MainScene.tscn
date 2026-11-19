@@ -113,7 +113,9 @@ offset_bottom = 68.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+modulate = Color(1.12, 1.12, 1.12, 1)
 text = "Recenter Colony"
+script = ExtResource("8_recenter_button")
 
 [node name="MainMenuButton" type="Button" parent="UI"]
 anchors_preset = 1
@@ -125,4 +127,5 @@ offset_right = -20.0
 offset_bottom = 68.0
 grow_horizontal = 0
 text = "Main Menu"
+modulate = Color(1.12, 1.12, 1.12, 1)
 script = ExtResource("7_menu_button")

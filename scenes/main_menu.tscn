@@ -55,4 +55,5 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "Reset Game"
+modulate = Color(1.12, 1.12, 1.12, 1)
 script = ExtResource("2_reset")
