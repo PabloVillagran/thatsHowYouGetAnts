@@ -4,8 +4,9 @@
 [ext_resource type="Script" path="res://scripts/game_camera.gd" id="2_camera"]
 [ext_resource type="Script" path="res://scripts/food_amount_label.gd" id="3_food"]
 [ext_resource type="Script" path="res://scripts/economy_purchase_button.gd" id="4_purchase"]
-[ext_resource type="Script" path="res://scripts/reset_button.gd" id="5_reset"]
 [ext_resource type="Script" path="res://scripts/ant_counter.gd" id="6_ant_counter"]
+[ext_resource type="Script" path="res://scripts/return_to_menu_button.gd" id="7_menu_button"]
+[ext_resource type="Script" path="res://scripts/recenter_button.gd" id="8_recenter_button"]
 
 [node name="QueenAnt1" type="Node2D"]
 
@@ -100,7 +101,7 @@ layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior"
 
-[node name="ResetButton" type="Button" parent="UI"]
+[node name="RecenterButton" type="Button" parent="UI"]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
@@ -110,5 +111,19 @@ offset_right = 120.0
 offset_bottom = 68.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-text = "Reset Game"
-script = ExtResource("5_reset")
+modulate = Color(1.12, 1.12, 1.12, 1)
+text = "Recenter Colony"
+script = ExtResource("8_recenter_button")
+
+[node name="MainMenuButton" type="Button" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 68.0
+grow_horizontal = 0
+text = "Main Menu"
+modulate = Color(1.12, 1.12, 1.12, 1)
+script = ExtResource("7_menu_button")

@@ -8,8 +8,20 @@ var mouse_panning: bool = false
 
 
 func _ready() -> void:
-	position = get_viewport_rect().size * 0.5
 	_update_minimum_zoom()
+	# Wait until AntSource has finished positioning itself and spawning the queen.
+	call_deferred("recenter_on_colony")
+
+
+func recenter_on_colony() -> void:
+	var ant_source := get_parent().get_node_or_null("AntSource")
+	if ant_source == null:
+		return
+	var queen_ants: Array = ant_source.get("queen_ants")
+	if not queen_ants.is_empty() and is_instance_valid(queen_ants[0]):
+		global_position = queen_ants[0].global_position
+	else:
+		global_position = ant_source.global_position
 
 
 func _input(event: InputEvent) -> void:
