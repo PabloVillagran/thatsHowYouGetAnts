@@ -44,6 +44,7 @@ theme_override_font_sizes/font_size = 28
 text = "Incremental 1"
 
 [node name="QueenAnt1Button" type="Button" parent="CenterContainer/Menu"]
+visible = false
 custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 theme_override_font_sizes/font_size = 28

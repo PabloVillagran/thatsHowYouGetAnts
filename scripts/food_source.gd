@@ -14,9 +14,9 @@ var _depletion_step: int = 0
 var _is_depleted: bool = false
 
 
-func initialize(random: RandomNumberGenerator, food_multiplier: float = 1.0) -> void:
+func initialize(random: RandomNumberGenerator, food_multiplier: float = 1.0, food_bonus: int = 0) -> void:
 	var sides := SIDE_COUNTS[random.randi_range(0, SIDE_COUNTS.size() - 1)]
-	starting_food = int(ceil(random.randi_range(MIN_FOOD, MAX_FOOD) * food_multiplier))
+	starting_food = int(ceil(random.randi_range(MIN_FOOD, MAX_FOOD) * food_multiplier)) + maxi(0, food_bonus)
 	food_remaining = starting_food
 	var points := PackedVector2Array()
 	var base_angle := random.randf_range(0.0, TAU)
@@ -46,6 +46,14 @@ func harvest(requested_amount: int) -> int:
 		_is_depleted = true
 		call_deferred("_finish_depletion")
 	return collected
+
+
+func increase_food_capacity(amount: int) -> void:
+	if amount <= 0 or _is_depleted:
+		return
+	starting_food += amount
+	food_remaining += amount
+	scale = Vector2.ONE * _base_radius() * (1.0 - 0.25 * float(_depletion_step))
 
 
 func _finish_depletion() -> void:
