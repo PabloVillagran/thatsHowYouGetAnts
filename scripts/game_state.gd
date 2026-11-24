@@ -9,6 +9,9 @@ const WORKER_START_COST: int = 5
 const QUEEN_START_COST: int = 300
 const UPGRADE_START_COST: int = 25
 const MAX_PURCHASE_COST: int = 2000000000
+const WARRIOR_DAMAGE_START_COST: int = 250
+const WARRIOR_ENDURANCE_START_COST: int = 400
+const WARRIOR_TRAINING_START_COST: int = 600
 const SAVE_PATH: String = "user://game_state.json"
 const AUTOSAVE_INTERVAL: float = 10.0
 const MAX_OFFLINE_SECONDS: float = 86400.0
@@ -23,6 +26,12 @@ var queen_ant_mode_active: bool = false
 var queen_count: int = 1
 var worker_count: int = 0
 var warrior_count: int = 0
+var warrior_damage_level: int = 0
+var warrior_endurance_level: int = 0
+var warrior_training_level: int = 0
+var warrior_damage_cost: int = WARRIOR_DAMAGE_START_COST
+var warrior_endurance_cost: int = WARRIOR_ENDURANCE_START_COST
+var warrior_training_cost: int = WARRIOR_TRAINING_START_COST
 var worker_cost: int = WORKER_START_COST
 var queen_cost: int = QUEEN_START_COST
 var queen_production_level: int = 0
@@ -62,6 +71,10 @@ var saved_queen_amount: int = 1
 var saved_worker_amount: int = 0
 var saved_warrior_amount: int = 0
 var saved_warrior_health: Array = []
+var saved_step_counts: Dictionary = {}
+var saved_step_grid_colliders: Dictionary = {}
+var saved_worker_paint_trail: Dictionary = {}
+var saved_worker_paint_trail_format: int = 0
 var update_time: int = 0
 var autosave_elapsed: float = 0.0
 
@@ -122,7 +135,7 @@ func _cost_after_purchases(start_cost: int, multiplier: float, purchases: int) -
 	return cost
 
 
-func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warrior_health: Array = []) -> void:
+func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warrior_health: Array = [], step_counts: Dictionary = {}, step_grid_colliders: Dictionary = {}, worker_paint_trail: Dictionary = {}, worker_paint_trail_format: int = 1) -> void:
 	queen_count = queen_amount
 	worker_count = worker_amount
 	warrior_count = warrior_amount
@@ -134,6 +147,13 @@ func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warri
 		"worker_amount": worker_amount,
 		"warrior_amount": warrior_amount,
 		"warrior_health": warrior_health,
+		"step_counts": step_counts,
+		"step_grid_colliders": step_grid_colliders,
+		"worker_paint_trail": worker_paint_trail,
+		"worker_paint_trail_format": worker_paint_trail_format,
+		"warrior_damage_level": warrior_damage_level,
+		"warrior_endurance_level": warrior_endurance_level,
+		"warrior_training_level": warrior_training_level,
 		"worker_cost": worker_cost,
 		"queen_cost": queen_cost,
 		"queen_production_level": queen_production_level,
@@ -172,6 +192,10 @@ func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warri
 	saved_worker_amount = worker_amount
 	saved_warrior_amount = warrior_amount
 	saved_warrior_health = warrior_health
+	saved_step_counts = step_counts.duplicate(true)
+	saved_step_grid_colliders = step_grid_colliders.duplicate(true)
+	saved_worker_paint_trail = worker_paint_trail.duplicate(true)
+	saved_worker_paint_trail_format = worker_paint_trail_format
 	has_saved_game = true
 
 
@@ -196,8 +220,18 @@ func _load_game() -> void:
 	saved_queen_amount = maxi(1, int(state.get("queen_amount", 1)))
 	saved_worker_amount = maxi(0, int(state.get("worker_amount", 0)))
 	saved_warrior_amount = maxi(0, int(state.get("warrior_amount", 0)))
+	warrior_damage_level = clampi(int(state.get("warrior_damage_level", 0)), 0, 4)
+	warrior_endurance_level = clampi(int(state.get("warrior_endurance_level", 0)), 0, 5)
+	warrior_training_level = clampi(int(state.get("warrior_training_level", 0)), 0, 5)
 	var health: Variant = state.get("warrior_health", [])
 	saved_warrior_health = health if health is Array else []
+	var saved_steps: Variant = state.get("step_counts", {})
+	saved_step_counts = saved_steps if saved_steps is Dictionary else {}
+	var saved_colliders: Variant = state.get("step_grid_colliders", {})
+	saved_step_grid_colliders = saved_colliders if saved_colliders is Dictionary else {}
+	var saved_trail: Variant = state.get("worker_paint_trail", {})
+	saved_worker_paint_trail = saved_trail if saved_trail is Dictionary else {}
+	saved_worker_paint_trail_format = maxi(0, int(state.get("worker_paint_trail_format", 0)))
 	queen_count = saved_queen_amount
 	worker_count = saved_worker_amount
 	warrior_count = saved_warrior_amount
@@ -231,6 +265,9 @@ func _load_game() -> void:
 	# Recalculate next prices from saved progress so balance changes also reach
 	# existing colonies without resetting food, ants, or upgrade levels.
 	queen_cost = _cost_after_purchases(QUEEN_START_COST, 1.45, saved_queen_amount - 1)
+	warrior_damage_cost = _cost_after_purchases(WARRIOR_DAMAGE_START_COST, 1.5, warrior_damage_level)
+	warrior_endurance_cost = _cost_after_purchases(WARRIOR_ENDURANCE_START_COST, 1.6, warrior_endurance_level)
+	warrior_training_cost = _cost_after_purchases(WARRIOR_TRAINING_START_COST, 1.7, warrior_training_level)
 	queen_production_cost = _cost_after_purchases(UPGRADE_START_COST, 1.3, queen_production_level)
 	food_efficiency_cost = _cost_after_purchases(UPGRADE_START_COST, 1.3, food_efficiency_level)
 	carry_capacity_cost = _cost_after_purchases(UPGRADE_START_COST, 1.15, carry_capacity_level)
@@ -251,7 +288,7 @@ func _load_game() -> void:
 			add_food(offline_food)
 			# Persist the credited amount and a fresh timestamp immediately so
 			# reopening the app cannot credit the same offline interval again.
-			save_game(saved_queen_amount, saved_worker_amount, saved_warrior_amount)
+			save_game(saved_queen_amount, saved_worker_amount, saved_warrior_amount, saved_warrior_health, saved_step_counts, saved_step_grid_colliders, saved_worker_paint_trail, saved_worker_paint_trail_format)
 	economy_changed.emit()
 
 
@@ -271,6 +308,12 @@ func reset_game() -> void:
 	queen_count = 1
 	worker_count = 0
 	warrior_count = 0
+	warrior_damage_level = 0
+	warrior_endurance_level = 0
+	warrior_training_level = 0
+	warrior_damage_cost = WARRIOR_DAMAGE_START_COST
+	warrior_endurance_cost = WARRIOR_ENDURANCE_START_COST
+	warrior_training_cost = WARRIOR_TRAINING_START_COST
 	worker_cost = WORKER_START_COST
 	queen_cost = QUEEN_START_COST
 	queen_production_level = 0
@@ -303,6 +346,10 @@ func reset_game() -> void:
 	saved_worker_amount = 0
 	saved_warrior_amount = 0
 	saved_warrior_health = []
+	saved_step_counts = {}
+	saved_step_grid_colliders = {}
+	saved_worker_paint_trail = {}
+	saved_worker_paint_trail_format = 0
 	update_time = 0
 	autosave_elapsed = 0.0
 	get_tree().reload_current_scene()

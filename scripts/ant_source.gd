@@ -6,6 +6,11 @@ const ANT_SCENE: PackedScene = preload("res://scenes/ant.tscn")
 const FOOD_SOURCE_SCENE: PackedScene = preload("res://scenes/food_source.tscn")
 const FOOD_DROP_SCENE: PackedScene = preload("res://scenes/food_drop.tscn")
 const SUPER_FOOD_SCENE: PackedScene = preload("res://scenes/super_food.tscn")
+const STEP_HEATMAP_OVERLAY_SCRIPT = preload("res://scripts/step_heatmap_overlay.gd")
+const WORKER_TRAIL_Z_INDEX: int = -4096
+const QUEEN_Z_INDEX: int = 2
+const WARRIOR_Z_INDEX: int = 3
+const WORKER_Z_INDEX: int = 4
 const SUPER_FOOD_DROP_CHANCE_OUT_OF: int = 10
 const SUPER_FOOD_DROP_CHANCE_IN: int = 1
 const SUPER_FOOD_SPEED_MULTIPLIER: float = 2.0
@@ -20,15 +25,28 @@ const QUEEN_SPAWN_POSITION: Vector2 = Vector2(0.0, -32.0)
 const FOLLOW_DISTANCE: float = 10.0
 const MAX_WORKERS_PER_CLUSTER: int = 10
 const COLONY_RADIUS: float = 120.0
-const WARRIOR_COST: int = 75
+const WARRIOR_COST: int = 100
 const WARRIOR_HEALTH: int = 10
 const WARRIOR_DAMAGE: int = 4
+const WARRIOR_HEALTH_PER_ENDURANCE_LEVEL: int = 2
 const ATTACK_RANGE: float = 5.0
 const ATTACK_INTERVAL: float = 1.0
+const WARRIOR_POST_WANDER_RADIUS: float = 3.0
 const WORM_HEALTH: int = 24
+const WORM_SPEED: float = 12.0
+const WORM_SPAWN_MARGIN: float = 10.0
+const WORM_LANE_OFFSET_FRACTION: float = 0.65
 const WORM_DROP_COUNT: int = 6
 const WORM_DROP_FOOD: int = 60
 const WORM_DROP_SPACING: float = 3.0
+const STEP_GRID_SPACING: float = 15.0
+const STEP_GRID_ROW_HEIGHT: float = 12.990381
+const STEP_GRID_STEP_RADIUS: float = 7.0
+const WARRIOR_DEFENSE_RADIUS: float = STEP_GRID_STEP_RADIUS + ATTACK_RANGE
+const STEP_GRID_MAX_COUNT: int = 100
+const SATURATED_POINT_FOOD_CLEARANCE: float = 2.0
+const FOOD_SOURCE_POSITION_ATTEMPTS: int = 200
+const STEP_GRID_NEIGHBORS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 1)]
 
 @export var ant_speed: float = 19.6
 @export var spawn_workers: bool = false
@@ -38,6 +56,7 @@ const WORM_DROP_SPACING: float = 3.0
 @export_range(0, 20, 1) var active_food_source_count: int = 3
 @export_range(1, 100, 1) var food_per_ant_per_trip: int = 1
 @export_range(1.0, 20.0, 0.5) var food_gather_pause_duration: float = 5.0
+@export var debug_step_heatmap: bool = false
 
 @onready var food_sources_container: Node2D = $FoodSources
 
@@ -45,12 +64,22 @@ var queen_ants: Array[AntParticle] = []
 var worker_ants: Array[AntParticle] = []
 var worker_groups: Array = []
 var warrior_ants: Array[AntParticle] = []
+var warrior_post_positions: Dictionary = {}
 var random := RandomNumberGenerator.new()
 var queen_spawn_elapsed: float = 0.0
 var worm: Polygon2D
 var worm_health: int = 0
 var worm_spawn_remaining: float = 0.0
+var worm_travel_direction: Vector2 = Vector2.ZERO
+var worm_exit_position: Vector2 = Vector2.ZERO
 var super_food_speed_remaining: float = 0.0
+var step_counts: Dictionary = {}
+var step_grid_colliders: Dictionary = {}
+var step_grid_points: Dictionary = {}
+var ant_previous_positions: Dictionary = {}
+var ant_active_step_points: Dictionary = {}
+var step_heatmap_overlay: StepHeatmapOverlay
+var worker_trail_overlay: StepHeatmapOverlay
 
 
 func _ready() -> void:
@@ -59,15 +88,32 @@ func _ready() -> void:
 	# The camera frames the viewport center in both game scenes. Keep the
 	# shared spawn origin there regardless of how the scene was entered.
 	position = get_viewport_rect().size * 0.5
+	step_heatmap_overlay = STEP_HEATMAP_OVERLAY_SCRIPT.new() as StepHeatmapOverlay
+	step_heatmap_overlay.name = "StepHeatmapOverlay"
+	step_heatmap_overlay.z_as_relative = false
+	step_heatmap_overlay.z_index = 4096
+	step_heatmap_overlay.draw_paint_trail = false
+	add_child(step_heatmap_overlay)
+	worker_trail_overlay = STEP_HEATMAP_OVERLAY_SCRIPT.new() as StepHeatmapOverlay
+	worker_trail_overlay.name = "WorkerTrailOverlay"
+	worker_trail_overlay.z_as_relative = false
+	worker_trail_overlay.z_index = WORKER_TRAIL_Z_INDEX
+	worker_trail_overlay.draw_step_heatmap = false
+	add_child(worker_trail_overlay)
+	if GameState.has_saved_game:
+		worker_trail_overlay.load_paint_state(GameState.saved_worker_paint_trail, GameState.saved_worker_paint_trail_format)
 	_draw_colony_boundary()
 	_schedule_worm()
 	_spawn_colonies()
+	_initialize_step_grid()
+	for warrior in warrior_ants:
+		_choose_warrior_destination(warrior)
 	_spawn_initial_food_sources()
 	for group_state in worker_groups:
 		_start_worker_group_foraging(group_state)
 	# Establish a fresh save timestamp for the selected variant. This prevents
 	# time spent in the other variant from being credited at the wrong rate.
-	GameState.save_game(queen_ants.size(), worker_ants.size(), warrior_ants.size())
+	save_colony()
 
 
 func _process(delta: float) -> void:
@@ -84,6 +130,238 @@ func _process(delta: float) -> void:
 	_update_idle_queens(delta)
 	_update_worm_spawn(delta)
 	_update_warriors(delta)
+	_update_step_heatmap()
+	step_heatmap_overlay.step_counts = step_counts
+	step_heatmap_overlay.step_grid_points = step_grid_points
+	step_heatmap_overlay.debug_step_heatmap = debug_step_heatmap
+	step_heatmap_overlay.visible = debug_step_heatmap
+	step_heatmap_overlay.queue_redraw()
+
+
+func _initialize_step_grid() -> void:
+	step_counts = GameState.saved_step_counts.duplicate(true) if GameState.has_saved_game else {}
+	step_grid_colliders = GameState.saved_step_grid_colliders.duplicate(true) if GameState.has_saved_game else {}
+	step_grid_points.clear()
+	ant_previous_positions.clear()
+	ant_active_step_points.clear()
+	# Seed the available triangular lattice through the colony radius. Only
+	# visited points are drawn or stored in the save.
+	var coordinate_limit := int(ceil(COLONY_RADIUS / STEP_GRID_ROW_HEIGHT)) + 2
+	for q in range(-coordinate_limit, coordinate_limit + 1):
+		for r in range(-coordinate_limit, coordinate_limit + 1):
+			var point := Vector2(q * STEP_GRID_SPACING + r * STEP_GRID_SPACING * 0.5, r * STEP_GRID_ROW_HEIGHT)
+			if point.length() <= COLONY_RADIUS:
+				step_grid_points[_step_grid_key(Vector2i(q, r))] = Vector2i(q, r)
+	for key in step_counts.keys():
+		var coordinate: Variant = _step_grid_coordinate(str(key))
+		if coordinate != null:
+			step_grid_points[key] = coordinate
+			step_counts[key] = clampi(int(step_counts[key]), 1, STEP_GRID_MAX_COUNT)
+			if not step_grid_colliders.has(key):
+				step_grid_colliders[key] = step_counts[key] < STEP_GRID_MAX_COUNT
+			else:
+				step_grid_colliders[key] = bool(step_grid_colliders[key]) and step_counts[key] < STEP_GRID_MAX_COUNT
+			if _is_step_grid_edge(coordinate):
+				_expand_step_grid_from(coordinate)
+	for ant in _digging_ants():
+		ant_previous_positions[ant.get_instance_id()] = ant.position
+
+
+func _update_step_heatmap() -> void:
+	for ant in _digging_ants():
+		var id := ant.get_instance_id()
+		var current_position := ant.position
+		if ant_previous_positions.has(id):
+			var previous_position: Vector2 = ant_previous_positions[id]
+			var currently_near: Dictionary = {}
+			for key in step_grid_points.keys():
+				if not bool(step_grid_colliders.get(key, true)):
+					continue
+				var coordinate: Vector2i = step_grid_points[key]
+				var point := QUEEN_SPAWN_POSITION + Vector2(coordinate.x * STEP_GRID_SPACING + coordinate.y * STEP_GRID_SPACING * 0.5, coordinate.y * STEP_GRID_ROW_HEIGHT)
+				if _distance_to_segment(point, previous_position, current_position) <= STEP_GRID_STEP_RADIUS:
+					var active_points: Dictionary = ant_active_step_points.get(id, {})
+					if not active_points.has(key):
+						step_counts[key] = mini(STEP_GRID_MAX_COUNT, int(step_counts.get(key, 0)) + 1)
+						if step_counts[key] >= STEP_GRID_MAX_COUNT:
+							step_grid_colliders[key] = false
+						else:
+							step_grid_colliders[key] = true
+						if _is_step_grid_edge(coordinate):
+							_expand_step_grid_from(coordinate)
+					if current_position.distance_to(point) <= STEP_GRID_STEP_RADIUS:
+						currently_near[key] = true
+			ant_active_step_points[id] = currently_near
+			if ant.ant_type == AntParticle.AntType.WORKER:
+				worker_trail_overlay.paint_worker_trail(previous_position, current_position, step_counts, step_grid_points)
+		ant_previous_positions[id] = current_position
+	for id in ant_previous_positions.keys():
+		if not is_instance_id_valid(int(id)):
+			ant_previous_positions.erase(id)
+			ant_active_step_points.erase(id)
+
+
+func _expand_step_grid_from(coordinate: Vector2i) -> void:
+	for offset in STEP_GRID_NEIGHBORS:
+		var neighbor := coordinate + offset
+		var key := _step_grid_key(neighbor)
+		if not step_grid_points.has(key):
+			step_grid_points[key] = neighbor
+
+
+func _is_step_grid_edge(coordinate: Vector2i) -> bool:
+	for offset in STEP_GRID_NEIGHBORS:
+		if not step_grid_points.has(_step_grid_key(coordinate + offset)):
+			return true
+	return false
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, finish: Vector2) -> float:
+	var segment := finish - start
+	var length_squared := segment.length_squared()
+	if length_squared <= 0.0001:
+		return point.distance_to(start)
+	var t := clampf((point - start).dot(segment) / length_squared, 0.0, 1.0)
+	return point.distance_to(start + segment * t)
+
+
+func step_speed_multiplier_at(position_to_check: Vector2) -> float:
+	var relative_position := position_to_check - QUEEN_SPAWN_POSITION
+	var approximate_r := relative_position.y / STEP_GRID_ROW_HEIGHT
+	var approximate_q := (relative_position.x - approximate_r * STEP_GRID_SPACING * 0.5) / STEP_GRID_SPACING
+	var center_q := roundi(approximate_q)
+	var center_r := roundi(approximate_r)
+	var closest_key := ""
+	var closest_distance_squared := INF
+	for q in range(center_q - 1, center_q + 2):
+		for r in range(center_r - 1, center_r + 2):
+			var key := _step_grid_key(Vector2i(q, r))
+			if not step_grid_points.has(key):
+				continue
+			var candidate := Vector2(q * STEP_GRID_SPACING + r * STEP_GRID_SPACING * 0.5, r * STEP_GRID_ROW_HEIGHT)
+			var distance_squared := relative_position.distance_squared_to(candidate)
+			if distance_squared < closest_distance_squared:
+				closest_distance_squared = distance_squared
+				closest_key = key
+	if closest_key.is_empty():
+		return 1.0
+	var steps := clampf(float(step_counts.get(closest_key, 0)) / STEP_GRID_MAX_COUNT, 0.0, 1.0)
+	return 1.0 - 0.75 * (1.0 - steps)
+
+
+func route_waypoints_for(ant: AntParticle, start_position: Vector2, target: Vector2) -> Array[Vector2]:
+	var route: Array[Vector2] = []
+	if not is_worker_group_leader(ant):
+		return route
+	if step_counts.is_empty() or step_grid_points.is_empty():
+		return route
+	var start_coordinate := _nearest_step_coordinate(start_position)
+	var goal_coordinate := _nearest_step_coordinate(target)
+	if start_coordinate == goal_coordinate:
+		return route
+	var start_key := _step_grid_key(start_coordinate)
+	var goal_key := _step_grid_key(goal_coordinate)
+	var open_keys: Array[String] = [start_key]
+	var came_from: Dictionary = {}
+	var cost_so_far: Dictionary = {start_key: 0.0}
+	var finished: Dictionary = {}
+	while not open_keys.is_empty():
+		var best_index := 0
+		var best_score := INF
+		for index in range(open_keys.size()):
+			var candidate_key := open_keys[index]
+			var candidate_coordinate: Vector2i = step_grid_points.get(candidate_key, Vector2i.ZERO)
+			var candidate_position := _step_grid_position(candidate_coordinate)
+			var score: float = float(cost_so_far[candidate_key]) + candidate_position.distance_to(_step_grid_position(goal_coordinate))
+			if score < best_score:
+				best_score = score
+				best_index = index
+		var current_key := open_keys.pop_at(best_index)
+		if current_key == goal_key:
+			break
+		if finished.has(current_key):
+			continue
+		finished[current_key] = true
+		var current_coordinate: Vector2i = step_grid_points[current_key]
+		for neighbor_offset in STEP_GRID_NEIGHBORS:
+			var neighbor_coordinate: Vector2i = current_coordinate + neighbor_offset
+			var neighbor_key := _step_grid_key(neighbor_coordinate)
+			if not step_grid_points.has(neighbor_key) or finished.has(neighbor_key):
+				continue
+			var current_heat := float(step_counts.get(current_key, 0)) / float(STEP_GRID_MAX_COUNT)
+			var neighbor_heat := float(step_counts.get(neighbor_key, 0)) / float(STEP_GRID_MAX_COUNT)
+			var current_resistance := 1.0 / (0.25 + 0.75 * current_heat)
+			var neighbor_resistance := 1.0 / (0.25 + 0.75 * neighbor_heat)
+			var edge_cost := STEP_GRID_SPACING * (current_resistance + neighbor_resistance) * 0.5
+			var next_cost: float = float(cost_so_far[current_key]) + edge_cost
+			if not cost_so_far.has(neighbor_key) or next_cost < float(cost_so_far[neighbor_key]):
+				cost_so_far[neighbor_key] = next_cost
+				came_from[neighbor_key] = current_key
+				if not open_keys.has(neighbor_key):
+					open_keys.append(neighbor_key)
+	if not came_from.has(goal_key):
+		return route
+	var start_point := _step_grid_position(start_coordinate)
+	if start_position.distance_to(start_point) > 1.0:
+		route.append(start_point)
+	var reverse_keys: Array[String] = []
+	var cursor := goal_key
+	while cursor != start_key:
+		reverse_keys.append(cursor)
+		cursor = str(came_from[cursor])
+	reverse_keys.reverse()
+	for key in reverse_keys:
+		route.append(_step_grid_position(step_grid_points[key]))
+	if route.is_empty() or route[route.size() - 1].distance_to(target) > 1.0:
+		route.append(target)
+	else:
+		route[route.size() - 1] = target
+	return route
+
+
+func is_worker_group_leader(ant: AntParticle) -> bool:
+	for group_state in worker_groups:
+		var group_ants: Array = group_state["ants"]
+		if not group_ants.is_empty() and group_ants[0] == ant:
+			return true
+	return false
+
+
+func _nearest_step_coordinate(position_to_check: Vector2) -> Vector2i:
+	var nearest := Vector2i.ZERO
+	var nearest_distance_squared := INF
+	for key in step_grid_points:
+		var coordinate: Vector2i = step_grid_points[key]
+		var distance_squared := position_to_check.distance_squared_to(_step_grid_position(coordinate))
+		if distance_squared < nearest_distance_squared:
+			nearest_distance_squared = distance_squared
+			nearest = coordinate
+	return nearest
+
+
+func _step_grid_position(coordinate: Vector2i) -> Vector2:
+	return QUEEN_SPAWN_POSITION + Vector2(coordinate.x * STEP_GRID_SPACING + coordinate.y * STEP_GRID_SPACING * 0.5, coordinate.y * STEP_GRID_ROW_HEIGHT)
+
+
+func _step_grid_key(coordinate: Vector2i) -> String:
+	return "%d,%d" % [coordinate.x, coordinate.y]
+
+
+func _step_grid_coordinate(key: String) -> Variant:
+	var parts := key.split(",")
+	if parts.size() != 2 or not parts[0].is_valid_int() or not parts[1].is_valid_int():
+		return null
+	return Vector2i(int(parts[0]), int(parts[1]))
+
+
+func _digging_ants() -> Array[AntParticle]:
+	var result: Array[AntParticle] = []
+	for ant_node in get_tree().get_nodes_in_group("ants"):
+		if ant_node is AntParticle:
+			var ant := ant_node as AntParticle
+			if ant.can_dig and ant.get_parent() == self:
+				result.append(ant)
+	return result
 
 
 func _spawn_colonies() -> void:
@@ -98,9 +376,9 @@ func _spawn_colonies() -> void:
 	for _index in range(workers_to_spawn):
 		_register_worker(_create_ant(AntParticle.AntType.WORKER))
 	for index in range(warriors_to_spawn):
-		var health := WARRIOR_HEALTH
+		var health := _warrior_max_health()
 		if index < GameState.saved_warrior_health.size():
-			health = clampi(int(GameState.saved_warrior_health[index]), 1, WARRIOR_HEALTH)
+			health = clampi(int(GameState.saved_warrior_health[index]), 1, _warrior_max_health())
 		_spawn_warrior(health)
 	_set_idle_queens()
 	GameState.queen_count = queen_ants.size()
@@ -111,12 +389,26 @@ func _spawn_colonies() -> void:
 func _create_ant(ant_type) -> AntParticle:
 	var ant := ANT_SCENE.instantiate() as AntParticle
 	ant.ant_type = ant_type
-	var speed_multiplier := minf(2.0, pow(1.1, GameState.inc1_speed_level)) if not queen_ant_mode else pow(1.1, GameState.speed_level)
-	ant.move_speed = ant_speed * speed_multiplier
+	match ant_type:
+		AntParticle.AntType.QUEEN:
+			ant.z_index = QUEEN_Z_INDEX
+		AntParticle.AntType.WARRIOR:
+			ant.z_index = WARRIOR_Z_INDEX
+		AntParticle.AntType.WORKER:
+			ant.z_index = WORKER_Z_INDEX
+	ant.can_dig = ant_type == AntParticle.AntType.WORKER
+	ant.move_speed = _move_speed_for_type(ant_type)
 	if ant_type == AntParticle.AntType.WORKER and super_food_speed_remaining > 0.0:
 		ant.move_speed *= SUPER_FOOD_SPEED_MULTIPLIER
 	add_child(ant)
 	return ant
+
+
+func _move_speed_for_type(ant_type) -> float:
+	var speed_multiplier := minf(2.0, pow(1.1, GameState.inc1_speed_level)) if not queen_ant_mode else pow(1.1, GameState.speed_level)
+	if ant_type == AntParticle.AntType.WARRIOR:
+		speed_multiplier *= pow(1.1, GameState.warrior_training_level)
+	return ant_speed * speed_multiplier
 
 
 func _update_super_food_speed(delta: float) -> void:
@@ -765,38 +1057,71 @@ func _spawn_warrior(health: int) -> void:
 	_choose_warrior_destination(warrior)
 
 
+func _warrior_max_health() -> int:
+	return WARRIOR_HEALTH + WARRIOR_HEALTH_PER_ENDURANCE_LEVEL * GameState.warrior_endurance_level
+
+
 func _choose_warrior_destination(warrior: AntParticle) -> void:
+	var saturated_points := _saturated_step_points()
+	var warrior_id := warrior.get_instance_id()
+	if saturated_points.is_empty():
+		warrior_post_positions.erase(warrior_id)
+		warrior.set_target(warrior.position)
+		return
+	var post_position: Vector2 = saturated_points[random.randi_range(0, saturated_points.size() - 1)]
+	warrior_post_positions[warrior_id] = post_position
 	var angle := random.randf_range(0.0, TAU)
-	var radius := sqrt(random.randf()) * COLONY_RADIUS
-	warrior.set_target(QUEEN_SPAWN_POSITION + Vector2.RIGHT.rotated(angle) * radius)
+	var radius := sqrt(random.randf()) * WARRIOR_POST_WANDER_RADIUS
+	warrior.set_target(post_position + Vector2.RIGHT.rotated(angle) * radius)
+
+
+func _saturated_step_points() -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for key in step_counts:
+		if int(step_counts[key]) < STEP_GRID_MAX_COUNT:
+			continue
+		var coordinate: Vector2i = step_grid_points.get(key, Vector2i.ZERO)
+		points.append(QUEEN_SPAWN_POSITION + Vector2(coordinate.x * STEP_GRID_SPACING + coordinate.y * STEP_GRID_SPACING * 0.5, coordinate.y * STEP_GRID_ROW_HEIGHT))
+	return points
 
 
 func _update_warriors(delta: float) -> void:
+	var saturated_points := _saturated_step_points()
 	for warrior in warrior_ants.duplicate():
 		warrior.attack_cooldown = maxf(0.0, warrior.attack_cooldown - delta)
-		if worm == null:
-			warrior.move_step(delta)
-			if warrior.is_at_target(ARRIVAL_TOLERANCE):
-				_choose_warrior_destination(warrior)
+		var warrior_id: int = warrior.get_instance_id()
+		if saturated_points.is_empty():
+			warrior_post_positions.erase(warrior_id)
+			warrior.set_target(warrior.position)
+			continue
+		if not warrior_post_positions.has(warrior_id):
+			_choose_warrior_destination(warrior)
+		var post_position: Vector2 = warrior_post_positions.get(warrior_id, warrior.position)
+		if worm != null and worm.position.distance_to(post_position) <= WARRIOR_DEFENSE_RADIUS:
+			warrior.set_target(worm.position)
+			if not warrior.is_at_target(ATTACK_RANGE):
+				warrior.move_step(delta)
+			if not warrior.is_at_target(ATTACK_RANGE) or warrior.attack_cooldown > 0.0:
+				continue
+
+			warrior.attack_cooldown = ATTACK_INTERVAL
+			warrior.combat_health -= 1
+			worm_health -= WARRIOR_DAMAGE + GameState.warrior_damage_level
+			if worm_health <= 0:
+				_drop_worm_food()
+			if warrior.combat_health <= 0:
+				warrior_ants.erase(warrior)
+				warrior_post_positions.erase(warrior_id)
+				warrior.queue_free()
+				GameState.warrior_count = warrior_ants.size()
+				GameState.economy_changed.emit()
+			save_colony()
 			continue
 
-		warrior.set_target(worm.position)
-		if not warrior.is_at_target(ATTACK_RANGE):
-			warrior.move_step(delta)
-		if not warrior.is_at_target(ATTACK_RANGE) or warrior.attack_cooldown > 0.0:
-			continue
-
-		warrior.attack_cooldown = ATTACK_INTERVAL
-		warrior.combat_health -= 1
-		worm_health -= WARRIOR_DAMAGE
-		if worm_health <= 0:
-			_drop_worm_food()
-		if warrior.combat_health <= 0:
-			warrior_ants.erase(warrior)
-			warrior.queue_free()
-			GameState.warrior_count = warrior_ants.size()
-			GameState.economy_changed.emit()
-		save_colony()
+		warrior.set_target(post_position)
+		warrior.move_step(delta)
+		if warrior.is_at_target(ARRIVAL_TOLERANCE):
+			_choose_warrior_destination(warrior)
 
 
 func _schedule_worm() -> void:
@@ -805,6 +1130,12 @@ func _schedule_worm() -> void:
 
 func _update_worm_spawn(delta: float) -> void:
 	if worm != null:
+		worm.position += worm_travel_direction * WORM_SPEED * delta
+		if (worm.position - worm_exit_position).dot(worm_travel_direction) >= 0.0:
+			worm.position = worm_exit_position
+			worm.queue_free()
+			worm = null
+			_schedule_worm()
 		return
 	worm_spawn_remaining -= delta
 	if worm_spawn_remaining > 0.0:
@@ -817,10 +1148,15 @@ func _update_worm_spawn(delta: float) -> void:
 		Vector2(1, 2), Vector2(-3, 1), Vector2(-7, 3),
 	])
 	worm.color = Color(0.66, 0.42, 0.75)
-	var angle := random.randf_range(0.0, TAU)
-	var radius := sqrt(random.randf()) * (COLONY_RADIUS - 10.0)
-	worm.position = QUEEN_SPAWN_POSITION + Vector2.RIGHT.rotated(angle) * radius
-	worm.rotation = random.randf_range(0.0, TAU)
+	var travel_angle := random.randf_range(0.0, TAU)
+	worm_travel_direction = Vector2.RIGHT.rotated(travel_angle)
+	var perpendicular := worm_travel_direction.orthogonal()
+	var lane_offset := random.randf_range(-COLONY_RADIUS * WORM_LANE_OFFSET_FRACTION, COLONY_RADIUS * WORM_LANE_OFFSET_FRACTION)
+	var half_chord := sqrt(COLONY_RADIUS * COLONY_RADIUS - lane_offset * lane_offset)
+	var center_position := QUEEN_SPAWN_POSITION + perpendicular * lane_offset
+	worm.position = center_position - worm_travel_direction * (half_chord + WORM_SPAWN_MARGIN)
+	worm_exit_position = center_position + worm_travel_direction * (half_chord + WORM_SPAWN_MARGIN)
+	worm.rotation = travel_angle
 	worm_health = WORM_HEALTH
 	add_child(worm)
 
@@ -842,9 +1178,11 @@ func _drop_worm_food() -> void:
 
 
 func purchase_warrior() -> bool:
+	if queen_ants.size() < 4:
+		return false
 	if not GameState.spend_food(WARRIOR_COST):
 		return false
-	_spawn_warrior(WARRIOR_HEALTH)
+	_spawn_warrior(_warrior_max_health())
 	GameState.warrior_count = warrior_ants.size()
 	GameState.economy_changed.emit()
 	return true
@@ -854,7 +1192,7 @@ func save_colony() -> void:
 	var warrior_health: Array[int] = []
 	for warrior in warrior_ants:
 		warrior_health.append(warrior.combat_health)
-	GameState.save_game(queen_ants.size(), worker_ants.size(), warrior_ants.size(), warrior_health)
+	GameState.save_game(queen_ants.size(), worker_ants.size(), warrior_ants.size(), warrior_health, step_counts, step_grid_colliders, worker_trail_overlay.saved_paint_state())
 
 
 func _assign_idle_target(ant: AntParticle) -> void:
@@ -871,15 +1209,34 @@ func _spawn_initial_food_sources() -> void:
 
 func _spawn_food_source() -> void:
 	var source := FOOD_SOURCE_SCENE.instantiate() as Node2D
-	source.connect("depleted", _on_food_source_depleted)
-	food_sources_container.add_child(source)
 	if queen_ant_mode:
 		source.call("initialize", random, 1.0 + 0.25 * GameState.food_efficiency_level, 0)
 	else:
 		source.call("initialize", random, 1.0, GameState.inc1_source_size_level * 25)
-	var angle := random.randf_range(0.0, TAU)
-	var radius := random.randf_range(food_search_range * 0.45, food_search_range)
-	source.position = Vector2.RIGHT.rotated(angle) * radius
+	var source_radius: float = source.scale.x
+	for _attempt in range(FOOD_SOURCE_POSITION_ATTEMPTS):
+		var angle := random.randf_range(0.0, TAU)
+		var radius := random.randf_range(food_search_range * 0.45, food_search_range)
+		var candidate := Vector2.RIGHT.rotated(angle) * radius
+		if _is_food_source_position_allowed(candidate, source_radius):
+			source.position = candidate
+			source.connect("depleted", _on_food_source_depleted)
+			food_sources_container.add_child(source)
+			return
+	push_warning("Could not find a food source position clear of fully stepped grid points.")
+	source.free()
+
+
+func _is_food_source_position_allowed(candidate: Vector2, source_radius: float) -> bool:
+	var exclusion_radius := STEP_GRID_STEP_RADIUS + source_radius + SATURATED_POINT_FOOD_CLEARANCE
+	for key in step_counts:
+		if int(step_counts[key]) < STEP_GRID_MAX_COUNT:
+			continue
+		var coordinate: Vector2i = step_grid_points.get(key, Vector2i.ZERO)
+		var point := QUEEN_SPAWN_POSITION + Vector2(coordinate.x * STEP_GRID_SPACING + coordinate.y * STEP_GRID_SPACING * 0.5, coordinate.y * STEP_GRID_ROW_HEIGHT)
+		if candidate.distance_to(point) < exclusion_radius:
+			return false
+	return true
 
 
 func _on_food_source_depleted(source: Node2D) -> void:
@@ -1003,6 +1360,8 @@ func purchase_queen() -> bool:
 
 
 func purchase_upgrade(upgrade: String) -> bool:
+	if upgrade in ["warrior_damage", "warrior_endurance", "warrior_training"]:
+		return _purchase_warrior_upgrade(upgrade)
 	if not queen_ant_mode:
 		return _purchase_incremental_upgrade(upgrade)
 	var cost: int
@@ -1026,7 +1385,7 @@ func purchase_upgrade(upgrade: String) -> bool:
 			GameState.speed_level += 1
 			GameState.speed_cost = GameState.next_cost(cost, 1.15)
 			for ant in queen_ants + worker_ants + warrior_ants:
-				ant.move_speed = ant_speed * pow(1.1, GameState.speed_level)
+				ant.move_speed = _move_speed_for_type(ant.ant_type)
 				if ant.ant_type == AntParticle.AntType.WORKER and super_food_speed_remaining > 0.0:
 					ant.move_speed *= SUPER_FOOD_SPEED_MULTIPLIER
 		"food_efficiency":
@@ -1068,7 +1427,7 @@ func _purchase_incremental_upgrade(upgrade: String) -> bool:
 			GameState.inc1_speed_level += 1
 			GameState.inc1_speed_cost = GameState.next_cost(cost, 1.35)
 			for ant in queen_ants + worker_ants + warrior_ants:
-				ant.move_speed = ant_speed * minf(2.0, pow(1.1, GameState.inc1_speed_level))
+				ant.move_speed = _move_speed_for_type(ant.ant_type)
 				if ant.ant_type == AntParticle.AntType.WORKER and super_food_speed_remaining > 0.0:
 					ant.move_speed *= SUPER_FOOD_SPEED_MULTIPLIER
 		"food_source_size":
@@ -1094,5 +1453,44 @@ func _purchase_incremental_upgrade(upgrade: String) -> bool:
 		"gathering_time":
 			GameState.inc1_gathering_time_level += 1
 			GameState.inc1_gathering_time_cost = GameState.next_cost(cost, 1.4)
+	GameState.economy_changed.emit()
+	return true
+
+
+func _purchase_warrior_upgrade(upgrade: String) -> bool:
+	if queen_ants.size() < 4:
+		return false
+	var cost: int
+	match upgrade:
+		"warrior_damage":
+			if GameState.warrior_damage_level >= 4:
+				return false
+			cost = GameState.warrior_damage_cost
+		"warrior_endurance":
+			if GameState.warrior_endurance_level >= 5:
+				return false
+			cost = GameState.warrior_endurance_cost
+		"warrior_training":
+			if GameState.warrior_training_level >= 5:
+				return false
+			cost = GameState.warrior_training_cost
+		_:
+			return false
+	if not GameState.spend_food(cost):
+		return false
+	match upgrade:
+		"warrior_damage":
+			GameState.warrior_damage_level += 1
+			GameState.warrior_damage_cost = GameState.next_cost(cost, 1.5)
+		"warrior_endurance":
+			GameState.warrior_endurance_level += 1
+			GameState.warrior_endurance_cost = GameState.next_cost(cost, 1.6)
+			for warrior in warrior_ants:
+				warrior.combat_health += WARRIOR_HEALTH_PER_ENDURANCE_LEVEL
+		"warrior_training":
+			GameState.warrior_training_level += 1
+			GameState.warrior_training_cost = GameState.next_cost(cost, 1.7)
+			for warrior in warrior_ants:
+				warrior.move_speed = _move_speed_for_type(warrior.ant_type)
 	GameState.economy_changed.emit()
 	return true

@@ -14,11 +14,7 @@ func _ready() -> void:
 
 func _on_pressed() -> void:
 	ant_source.purchase_worker()
-	GameState.save_game(
-		ant_source.queen_ants.size(),
-		ant_source.worker_ants.size(),
-		ant_source.warrior_ants.size()
-	)
+	ant_source.save_colony()
 	_refresh_state()
 
 

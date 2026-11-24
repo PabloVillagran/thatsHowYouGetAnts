@@ -67,3 +67,8 @@ This is the conversationally agreed unlockable plan for the Incremental 1 scene.
 - Cost multiplier: 1.4 per purchase.
 - Maximum: 6 upgrades.
 - Each purchase reduces the gathering pause by 10% multiplicatively (base duration × 0.9^level).
+
+## Warrior unlock
+
+- Defenders cost a constant 100 food each and unlock for purchase after the colony has 4 queens. They patrol within 120 pixels of the queen and attack worms; see `.codex/ant_source_behavior_and_plan.md` for their combat, food-drop, and save behavior.
+- Warrior Damage, Warrior Endurance, and Warrior Training are available in both variants after four queens. Their costs, effects, and caps are implemented and listed in `.codex/ant_source_behavior_and_plan.md`.

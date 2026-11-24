@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/ant_counter.gd" id="6_ant_counter"]
 [ext_resource type="Script" path="res://scripts/return_to_menu_button.gd" id="7_menu_button"]
 [ext_resource type="Script" path="res://scripts/recenter_button.gd" id="8_recenter_button"]
+[ext_resource type="Script" path="res://scripts/step_heatmap_toggle.gd" id="9_heatmap_toggle"]
 
 [node name="QueenAnt1" type="Node2D"]
 
@@ -64,6 +65,7 @@ vertical_scroll_mode = 1
 
 [node name="PurchaseMenu" type="VBoxContainer" parent="UI/PurchaseScroll"]
 layout_mode = 2
+mouse_filter = 1
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
@@ -109,11 +111,33 @@ layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "worker_lifetime"
 
-[node name="BuyWarriorButton" type="Button" parent="UI/PurchaseMenu"]
+[node name="BuyWarriorButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
 custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior"
+
+[node name="WarriorDamageButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "warrior_damage"
+
+[node name="WarriorEnduranceButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "warrior_endurance"
+
+[node name="WarriorTrainingButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "warrior_training"
 
 [node name="RecenterButton" type="Button" parent="UI"]
 anchors_preset = 0
@@ -125,6 +149,20 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 modulate = Color(1.12, 1.12, 1.12, 1)
 text = "Recenter Colony"
 script = ExtResource("8_recenter_button")
+
+[node name="StepHeatmapToggle" type="Button" parent="UI"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -80.0
+offset_top = 16.0
+offset_right = 80.0
+offset_bottom = 64.0
+grow_horizontal = 2
+text = "Heat Map: Off"
+script = ExtResource("9_heatmap_toggle")
 
 [node name="MainMenuButton" type="Button" parent="UI"]
 anchors_preset = 1

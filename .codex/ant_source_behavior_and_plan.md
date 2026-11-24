@@ -2,10 +2,29 @@
 
 ## Visuals and scene structure
 
-- Use `Polygon2D` ants and food; workers are 2 pixels wide by 3 pixels long. Do not add imported game art.
+- Use `Polygon2D` ants and food; workers are 2 by 3 AntSource-local units. The shared `AntSource` world root is scaled 2x in both variants, so all game objects and world spacing render at twice their local size while CanvasLayer GUI elements remain unchanged. Do not add imported game art.
 - `AntSource` owns the queen, worker, and warrior ants directly. In both variants, workers are divided as evenly as possible among queen-led groups, with group sizes differing by at most one. One queen means one group contains all workers; there is no per-group cap.
 - Queens spawn at `QUEEN_SPAWN_POSITION`, 32 pixels above the AntSource origin. Workers spawn at random points inside the queen-centered 10 by 10 pixel deposit square, then join the smallest eligible leader group, with nearest leader breaking ties.
 - Expired Queen Ant 1 workers disappear completely.
+- Each worker-group leader uses the triangular step grid as a route-cost map. A grid edge's cost is its distance divided by the average speed multiplier at its endpoints, so route planning favors well-stepped terrain when that makes the trip faster overall. The leader moves through selected grid waypoints to food, stockpile, and other targets; before any points have been stepped, it keeps its direct route. Followers track the ant ahead without calculating their own routes. Existing step counts persist across saves and load into route planning.
+
+## Warriors and colony defense
+
+- Warriors are separate from worker foraging and do not carry or deposit food. The purchase button is hidden until the colony has at least 4 queens in either variant; `purchase_warrior()` also rejects purchases below that threshold. A defender costs a constant 100 food and starts with 10 health plus 2 per Warrior Endurance level. Both playable scenes disable free initial warrior spawning.
+- A warrior spawns at the queen's position and patrols around grid points that have reached 100 steps, wandering within 3 pixels of its assigned point. It engages a worm only while the worm is within 12 pixels of that assigned point; otherwise it returns to its post and does not pursue the worm. With no fully stepped points, warriors hold position and do not attack. Warriors use the active variant's ant speed upgrades. Super food speed boosts affect workers only.
+- After a random 12–20 second delay, a worm spawns just outside one side of the 120-pixel colony radius and travels across to just outside the opposite side. Its route is a randomized chord that may miss the colony center; it despawns after crossing the far edge. It has 24 health. A defender can attack only while the worm is in its assigned saturated-point area, attacking within 5 pixels at most once per second. Every attack deals 4 base damage plus Warrior Damage levels and costs that warrior 1 health; warriors do not take damage from the worm itself. A base warrior dies after its tenth attack if it remains alive that long; Endurance adds attacks they can survive. A new spawn delay is scheduled after a worm is defeated or escapes.
+- Defeating a worm removes it and creates six red food drops, each worth 60 food, in a short line at the worm's position and orientation. These are regular harvestable food polygons, so worker groups can collect them. A worm remains present if no warrior attacks it; purchasing a warrior later sends it to the current worm.
+- Warrior count, each warrior's remaining health, and warrior upgrade levels are saved. Loading restores health clamped from 1 to the current upgraded maximum. The four-queen check gates warrior purchases and upgrade purchases, but saved warriors and upgrade levels are retained even if the colony later has fewer than four queens.
+
+### Warrior upgrades
+
+These independent food upgrades are available in both variants after the colony reaches four queens. They do not change worker behavior. Each affects current warriors immediately and applies to warriors purchased later.
+
+- **Warrior Damage:** +1 damage per attack per level, from the base of 4. First cost 250 food, ×1.5 cost growth, maximum 4 levels. This reduces attacks needed to defeat a 24-health worm.
+- **Warrior Endurance:** +2 maximum health per level, from the base of 10. First cost 400 food, ×1.6 cost growth, maximum 5 levels. Buying a level adds 2 current health to each living warrior. Warriors still lose 1 health each time they attack.
+- **Warrior Training:** +10% movement speed multiplicatively per level. First cost 600 food, ×1.7 cost growth, maximum 5 levels. This applies while patrolling and pursuing worms, and does not change worker speed or the attack interval.
+
+Upgrade levels are saved with the shared game state, and warrior health saves against the upgraded maximum. The existing warrior purchase cost, patrol radius, attack interval, and worm/drop behavior remain unchanged.
 
 ## Cluster foraging
 

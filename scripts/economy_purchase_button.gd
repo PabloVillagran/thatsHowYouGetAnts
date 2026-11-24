@@ -1,11 +1,13 @@
 extends Button
 
-@export_enum("worker", "queen", "warrior", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime", "food_source_size", "food_source_amount", "gathering_time") var purchase_kind: String = "worker"
+@export_enum("worker", "queen", "warrior", "warrior_damage", "warrior_endurance", "warrior_training", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime", "food_source_size", "food_source_amount", "gathering_time") var purchase_kind: String = "worker"
 
 var ant_source
 
 
 func _ready() -> void:
+	# Let the parent ScrollContainer receive touch drags that begin on a button.
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	ant_source = get_tree().current_scene.get_node("AntSource")
 	pressed.connect(_on_pressed)
 	GameState.food_changed.connect(_refresh_state)
@@ -36,6 +38,8 @@ func _refresh_state(_unused: int = 0) -> void:
 
 
 func _is_unlocked(incremental: bool) -> bool:
+	if purchase_kind in ["warrior", "warrior_damage", "warrior_endurance", "warrior_training"]:
+		return ant_source.queen_ants.size() >= 4
 	if not incremental:
 		return purchase_kind not in ["food_source_size", "food_source_amount", "gathering_time"]
 	match purchase_kind:
@@ -50,6 +54,10 @@ func _is_unlocked(incremental: bool) -> bool:
 
 
 func _at_cap(incremental: bool) -> bool:
+	match purchase_kind:
+		"warrior_damage": return GameState.warrior_damage_level >= 4
+		"warrior_endurance": return GameState.warrior_endurance_level >= 5
+		"warrior_training": return GameState.warrior_training_level >= 5
 	if not incremental:
 		return false
 	match purchase_kind:
@@ -61,6 +69,10 @@ func _at_cap(incremental: bool) -> bool:
 
 
 func _current_cost(incremental: bool) -> int:
+	match purchase_kind:
+		"warrior_damage": return GameState.warrior_damage_cost
+		"warrior_endurance": return GameState.warrior_endurance_cost
+		"warrior_training": return GameState.warrior_training_cost
 	if incremental:
 		match purchase_kind:
 			"worker": return GameState.inc1_ant_cost
@@ -87,6 +99,10 @@ func _purchase_label(incremental: bool, cost: int) -> String:
 	var label := ""
 	if incremental:
 		match purchase_kind:
+			"warrior": label = "Defenders %s  |  Buy Defender" % _format_quantity(ant_source.warrior_ants.size())
+			"warrior_damage": label = "Warrior Damage +1/attack"
+			"warrior_endurance": label = "Warrior Max Health +2"
+			"warrior_training": label = "Warrior Move Speed +10%"
 			"worker": label = "Workers %s  |  Buy Ant" % _format_quantity(ant_source.worker_ants.size())
 			"queen": label = "Queens %s / 10  |  +1 leader" % _format_quantity(ant_source.queen_ants.size())
 			"carry_capacity": label = "Next Carry +1 food/trip"
@@ -101,7 +117,10 @@ func _purchase_label(incremental: bool, cost: int) -> String:
 	else:
 		match purchase_kind:
 			"queen": label = "Queens %s  |  Buy Queen" % _format_quantity(ant_source.queen_ants.size())
-		"warrior": label = "Guards %s  |  Buy Guard" % _format_quantity(ant_source.warrior_ants.size())
+			"warrior": label = "Defenders %s  |  Buy Defender" % _format_quantity(ant_source.warrior_ants.size())
+			"warrior_damage": label = "Warrior Damage +1/attack"
+			"warrior_endurance": label = "Warrior Max Health +2"
+			"warrior_training": label = "Warrior Move Speed +10%"
 			"queen_production": label = "Queen Spawn Rate +1 level" if ant_source.queen_ant_mode else "Queen Food +1/5s/queen"
 			"worker_lifetime": label = "Worker Lifetime +10s"
 			"carry_capacity": label = "Carry +1 food/trip"
@@ -113,6 +132,10 @@ func _purchase_label(incremental: bool, cost: int) -> String:
 
 
 func _current_level(incremental: bool) -> int:
+	match purchase_kind:
+		"warrior_damage": return GameState.warrior_damage_level
+		"warrior_endurance": return GameState.warrior_endurance_level
+		"warrior_training": return GameState.warrior_training_level
 	if incremental:
 		match purchase_kind:
 			"carry_capacity": return GameState.inc1_carry_level

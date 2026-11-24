@@ -19,6 +19,7 @@ const OUTLINE_WIDTH := 0.5
 
 @export var ant_type: AntType = AntType.WORKER
 @export var move_speed: float = 28.0
+@export var can_dig: bool = false
 
 var state: State = State.idle
 var heading: Vector2 = Vector2.RIGHT
@@ -35,6 +36,12 @@ var is_dead: bool = false
 var combat_health: int = 0
 var attack_cooldown: float = 0.0
 var food_source: Node2D
+var route_waypoints: Array[Vector2] = []
+var route_waypoint_index: int = 0
+var route_target: Vector2
+var route_initialized: bool = false
+var route_leader_state: bool = false
+var route_leader_state_initialized: bool = false
 
 
 func _ready() -> void:
@@ -98,16 +105,38 @@ func set_state(next_state: State) -> void:
 
 
 func set_target(next_target: Vector2) -> void:
+	var ant_source := get_parent()
+	var is_route_leader := ant_source != null and ant_source.has_method("is_worker_group_leader") and bool(ant_source.call("is_worker_group_leader", self))
+	var role_changed := not route_leader_state_initialized or route_leader_state != is_route_leader
+	var should_refresh_route := role_changed or not route_initialized or (is_route_leader and route_target.distance_to(next_target) >= 20.0)
 	target_position = next_target
+	route_leader_state = is_route_leader
+	route_leader_state_initialized = true
+	if should_refresh_route:
+		route_target = next_target
+		route_initialized = true
+		route_waypoints.clear()
+		route_waypoint_index = 0
+		if is_route_leader and ant_source.has_method("route_waypoints_for"):
+			route_waypoints = ant_source.call("route_waypoints_for", self, position, target_position)
 
 
 func move_step(delta: float) -> void:
-	var offset := target_position - position
+	while route_waypoint_index < route_waypoints.size() and position.distance_squared_to(route_waypoints[route_waypoint_index]) <= 1.0:
+		route_waypoint_index += 1
+	var movement_target := target_position
+	if route_waypoint_index < route_waypoints.size():
+		movement_target = route_waypoints[route_waypoint_index]
+	var offset := movement_target - position
 	if offset.length_squared() <= 0.0001:
 		return
 
 	heading = offset.normalized()
-	position = position.move_toward(target_position, move_speed * delta)
+	var speed_multiplier := 1.0
+	var ant_source := get_parent()
+	if ant_source != null and ant_source.has_method("step_speed_multiplier_at"):
+		speed_multiplier = float(ant_source.call("step_speed_multiplier_at", position))
+	position = position.move_toward(movement_target, move_speed * speed_multiplier * delta)
 	rotation = heading.angle() - PI * 0.5
 
 
