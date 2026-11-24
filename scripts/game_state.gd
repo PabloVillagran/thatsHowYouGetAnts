@@ -12,6 +12,7 @@ const MAX_PURCHASE_COST: int = 2000000000
 const WARRIOR_DAMAGE_START_COST: int = 250
 const WARRIOR_ENDURANCE_START_COST: int = 400
 const WARRIOR_TRAINING_START_COST: int = 600
+const WORKER_DIG_SPEED_START_COST: int = 300
 const SAVE_PATH: String = "user://game_state.json"
 const AUTOSAVE_INTERVAL: float = 10.0
 const MAX_OFFLINE_SECONDS: float = 86400.0
@@ -44,6 +45,8 @@ var speed_cost: int = UPGRADE_START_COST
 var food_efficiency_cost: int = UPGRADE_START_COST
 var worker_lifetime_level: int = 0
 var worker_lifetime_cost: int = UPGRADE_START_COST
+var worker_dig_speed_level: int = 0
+var worker_dig_speed_cost: int = WORKER_DIG_SPEED_START_COST
 const INC1_ANT_START_COST: int = 10
 const INC1_CARRY_START_COST: int = 100
 const INC1_SPEED_START_COST: int = 250
@@ -135,7 +138,7 @@ func _cost_after_purchases(start_cost: int, multiplier: float, purchases: int) -
 	return cost
 
 
-func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warrior_health: Array = [], step_counts: Dictionary = {}, step_grid_colliders: Dictionary = {}, worker_paint_trail: Dictionary = {}, worker_paint_trail_format: int = 1) -> void:
+func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warrior_health: Array = [], step_counts: Dictionary = {}, step_grid_colliders: Dictionary = {}, worker_paint_trail: Dictionary = {}, worker_paint_trail_format: int = 3) -> void:
 	queen_count = queen_amount
 	worker_count = worker_amount
 	warrior_count = warrior_amount
@@ -166,6 +169,8 @@ func save_game(queen_amount: int, worker_amount: int, warrior_amount: int, warri
 		"food_efficiency_cost": food_efficiency_cost,
 		"worker_lifetime_level": worker_lifetime_level,
 		"worker_lifetime_cost": worker_lifetime_cost,
+		"worker_dig_speed_level": worker_dig_speed_level,
+		"worker_dig_speed_cost": worker_dig_speed_cost,
 		"inc1_ant_cost": inc1_ant_cost,
 		"inc1_queen_cost": inc1_queen_cost,
 		"inc1_carry_cost": inc1_carry_cost,
@@ -247,6 +252,8 @@ func _load_game() -> void:
 	food_efficiency_cost = maxi(1, int(state.get("food_efficiency_cost", UPGRADE_START_COST)))
 	worker_lifetime_level = maxi(0, int(state.get("worker_lifetime_level", 0)))
 	worker_lifetime_cost = maxi(1, int(state.get("worker_lifetime_cost", UPGRADE_START_COST)))
+	worker_dig_speed_level = maxi(0, int(state.get("worker_dig_speed_level", 0)))
+	worker_dig_speed_cost = maxi(1, int(state.get("worker_dig_speed_cost", WORKER_DIG_SPEED_START_COST)))
 	inc1_ant_cost = maxi(1, int(state.get("inc1_ant_cost", INC1_ANT_START_COST)))
 	inc1_queen_cost = maxi(1, int(state.get("inc1_queen_cost", INC1_QUEEN_START_COST)))
 	inc1_carry_cost = maxi(1, int(state.get("inc1_carry_cost", INC1_CARRY_START_COST)))
@@ -273,6 +280,7 @@ func _load_game() -> void:
 	carry_capacity_cost = _cost_after_purchases(UPGRADE_START_COST, 1.15, carry_capacity_level)
 	speed_cost = _cost_after_purchases(UPGRADE_START_COST, 1.15, speed_level)
 	worker_lifetime_cost = _cost_after_purchases(UPGRADE_START_COST, 1.15, worker_lifetime_level)
+	worker_dig_speed_cost = _cost_after_purchases(WORKER_DIG_SPEED_START_COST, 1.5, worker_dig_speed_level)
 	inc1_queen_cost = _cost_after_purchases(INC1_QUEEN_START_COST, 1.5, inc1_queen_level)
 	inc1_carry_cost = _cost_after_purchases(INC1_CARRY_START_COST, 1.35, inc1_carry_level)
 	inc1_speed_cost = _cost_after_purchases(INC1_SPEED_START_COST, 1.35, inc1_speed_level)
@@ -326,6 +334,8 @@ func reset_game() -> void:
 	food_efficiency_cost = UPGRADE_START_COST
 	worker_lifetime_level = 0
 	worker_lifetime_cost = UPGRADE_START_COST
+	worker_dig_speed_level = 0
+	worker_dig_speed_cost = WORKER_DIG_SPEED_START_COST
 	inc1_ant_cost = INC1_ANT_START_COST
 	inc1_queen_cost = INC1_QUEEN_START_COST
 	inc1_carry_cost = INC1_CARRY_START_COST

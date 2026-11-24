@@ -182,7 +182,8 @@ func _update_step_heatmap() -> void:
 				if _distance_to_segment(point, previous_position, current_position) <= STEP_GRID_STEP_RADIUS:
 					var active_points: Dictionary = ant_active_step_points.get(id, {})
 					if not active_points.has(key):
-						step_counts[key] = mini(STEP_GRID_MAX_COUNT, int(step_counts.get(key, 0)) + 1)
+						var steps_per_pass := 1 + GameState.worker_dig_speed_level
+						step_counts[key] = mini(STEP_GRID_MAX_COUNT, int(step_counts.get(key, 0)) + steps_per_pass)
 						if step_counts[key] >= STEP_GRID_MAX_COUNT:
 							step_grid_colliders[key] = false
 						else:
@@ -276,7 +277,7 @@ func route_waypoints_for(ant: AntParticle, start_position: Vector2, target: Vect
 			if score < best_score:
 				best_score = score
 				best_index = index
-		var current_key := open_keys.pop_at(best_index)
+		var current_key: String = open_keys.pop_at(best_index)
 		if current_key == goal_key:
 			break
 		if finished.has(current_key):
@@ -1362,6 +1363,8 @@ func purchase_queen() -> bool:
 func purchase_upgrade(upgrade: String) -> bool:
 	if upgrade in ["warrior_damage", "warrior_endurance", "warrior_training"]:
 		return _purchase_warrior_upgrade(upgrade)
+	if upgrade == "worker_dig_speed" and (not queen_ant_mode or GameState.speed_level <= 0):
+		return false
 	if not queen_ant_mode:
 		return _purchase_incremental_upgrade(upgrade)
 	var cost: int
@@ -1371,6 +1374,7 @@ func purchase_upgrade(upgrade: String) -> bool:
 		"speed": cost = GameState.speed_cost
 		"food_efficiency": cost = GameState.food_efficiency_cost
 		"worker_lifetime": cost = GameState.worker_lifetime_cost
+		"worker_dig_speed": cost = GameState.worker_dig_speed_cost
 		_: return false
 	if not GameState.spend_food(cost):
 		return false
@@ -1394,11 +1398,16 @@ func purchase_upgrade(upgrade: String) -> bool:
 		"worker_lifetime":
 			GameState.worker_lifetime_level += 1
 			GameState.worker_lifetime_cost = GameState.next_cost(cost, 1.15)
+		"worker_dig_speed":
+			GameState.worker_dig_speed_level += 1
+			GameState.worker_dig_speed_cost = GameState.next_cost(cost, 1.5)
 	GameState.economy_changed.emit()
 	return true
 
 
 func _purchase_incremental_upgrade(upgrade: String) -> bool:
+	if upgrade == "worker_dig_speed" and GameState.inc1_speed_level <= 0:
+		return false
 	var cost: int
 	match upgrade:
 		"carry_capacity": cost = GameState.inc1_carry_cost
@@ -1407,6 +1416,7 @@ func _purchase_incremental_upgrade(upgrade: String) -> bool:
 		"queen": cost = GameState.inc1_queen_cost
 		"food_source_amount": cost = GameState.inc1_source_amount_cost
 		"gathering_time": cost = GameState.inc1_gathering_time_cost
+		"worker_dig_speed": cost = GameState.worker_dig_speed_cost
 		_: return false
 	if upgrade == "queen" and queen_ants.size() >= 10:
 		return false
@@ -1453,6 +1463,9 @@ func _purchase_incremental_upgrade(upgrade: String) -> bool:
 		"gathering_time":
 			GameState.inc1_gathering_time_level += 1
 			GameState.inc1_gathering_time_cost = GameState.next_cost(cost, 1.4)
+		"worker_dig_speed":
+			GameState.worker_dig_speed_level += 1
+			GameState.worker_dig_speed_cost = GameState.next_cost(cost, 1.5)
 	GameState.economy_changed.emit()
 	return true
 

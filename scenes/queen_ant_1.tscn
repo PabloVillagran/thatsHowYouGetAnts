@@ -1,4 +1,6 @@
-[gd_scene format=3]
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/GUI/FreeDemo.png" id="11_ui_atlas"]
 
 [ext_resource type="PackedScene" path="res://scenes/ant_source.tscn" id="1_source"]
 [ext_resource type="Script" path="res://scripts/game_camera.gd" id="2_camera"]
@@ -8,6 +10,47 @@
 [ext_resource type="Script" path="res://scripts/return_to_menu_button.gd" id="7_menu_button"]
 [ext_resource type="Script" path="res://scripts/recenter_button.gd" id="8_recenter_button"]
 [ext_resource type="Script" path="res://scripts/step_heatmap_toggle.gd" id="9_heatmap_toggle"]
+[ext_resource type="Script" path="res://scripts/purchase_list_toggle.gd" id="10_purchase_toggle"]
+
+[sub_resource type="AtlasTexture" id="GameButtonBrownAtlas"]
+atlas = ExtResource("11_ui_atlas")
+region = Rect2(138, 149, 57, 20)
+
+[sub_resource type="AtlasTexture" id="GameButtonGreenAtlas"]
+atlas = ExtResource("11_ui_atlas")
+region = Rect2(138, 182, 57, 20)
+
+[sub_resource type="AtlasTexture" id="GameButtonOchreAtlas"]
+atlas = ExtResource("11_ui_atlas")
+region = Rect2(138, 215, 57, 20)
+
+[sub_resource type="StyleBoxTexture" id="GameButtonNormal"]
+texture = SubResource("GameButtonBrownAtlas")
+texture_margin_left = 8.0
+texture_margin_top = 7.0
+texture_margin_right = 8.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxTexture" id="GameButtonHover"]
+texture = SubResource("GameButtonGreenAtlas")
+texture_margin_left = 8.0
+texture_margin_top = 7.0
+texture_margin_right = 8.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxTexture" id="GameButtonPressed"]
+texture = SubResource("GameButtonOchreAtlas")
+texture_margin_left = 8.0
+texture_margin_top = 7.0
+texture_margin_right = 8.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxTexture" id="GameLabelPanel"]
+texture = SubResource("GameButtonBrownAtlas")
+texture_margin_left = 8.0
+texture_margin_top = 7.0
+texture_margin_right = 8.0
+texture_margin_bottom = 7.0
 
 [node name="QueenAnt1" type="Node2D"]
 
@@ -22,7 +65,33 @@ script = ExtResource("2_camera")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
+[node name="FoodAmountPanel" type="Panel" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 72.0
+offset_right = -12.0
+offset_bottom = 116.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("GameLabelPanel")
+
+[node name="AntCounterPanel" type="Panel" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 114.0
+offset_right = -12.0
+offset_bottom = 154.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("GameLabelPanel")
+
 [node name="FoodAmount" type="Label" parent="UI"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_shadow_color = Color(0.12, 0.09, 0.05, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 12.0
@@ -37,6 +106,10 @@ vertical_alignment = 1
 script = ExtResource("3_food")
 
 [node name="AntCounter" type="Label" parent="UI"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_shadow_color = Color(0.12, 0.09, 0.05, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 12.0
@@ -69,75 +142,190 @@ mouse_filter = 1
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="BuyQueenButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+[node name="UnitList" type="VBoxContainer" parent="UI/PurchaseScroll/PurchaseMenu"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="BuyQueenButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UnitList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "queen"
 
-[node name="QueenProductionButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="UpgradeList" type="VBoxContainer" parent="UI/PurchaseScroll/PurchaseMenu"]
+layout_mode = 2
+visible = false
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="QueenProductionButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "queen_production"
 
-[node name="CarryCapacityButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="CarryCapacityButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "carry_capacity"
 
-[node name="AntSpeedButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="AntSpeedButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "speed"
 
-[node name="FoodEfficiencyButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="WorkerDigSpeedButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+layout_mode = 2
+script = ExtResource("4_purchase")
+purchase_kind = "worker_dig_speed"
+
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="FoodEfficiencyButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "food_efficiency"
 
-[node name="WorkerLifetimeButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="WorkerLifetimeButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "worker_lifetime"
 
-[node name="BuyWarriorButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="BuyWarriorButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UnitList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior"
 
-[node name="WarriorDamageButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="WarriorDamageButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior_damage"
 
-[node name="WarriorEnduranceButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="WarriorEnduranceButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior_endurance"
 
-[node name="WarriorTrainingButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu"]
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="WarriorTrainingButton" type="Button" parent="UI/PurchaseScroll/PurchaseMenu/UpgradeList"]
 custom_minimum_size = Vector2(0, 56)
 size_flags_horizontal = 3
 layout_mode = 2
 script = ExtResource("4_purchase")
 purchase_kind = "warrior_training"
+
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
+[node name="PurchaseListToggle" type="Button" parent="UI"]
+anchor_left = 0.0
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = -298.0
+offset_right = 0.0
+offset_bottom = -242.0
+grow_horizontal = 2
+text = "upgrades"
+script = ExtResource("10_purchase_toggle")
+
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
 
 [node name="RecenterButton" type="Button" parent="UI"]
 anchors_preset = 0
@@ -149,6 +337,13 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 modulate = Color(1.12, 1.12, 1.12, 1)
 text = "Recenter Colony"
 script = ExtResource("8_recenter_button")
+
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
 
 [node name="StepHeatmapToggle" type="Button" parent="UI"]
 anchors_preset = 8
@@ -164,6 +359,13 @@ grow_horizontal = 2
 text = "Heat Map: Off"
 script = ExtResource("9_heatmap_toggle")
 
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1
+
 [node name="MainMenuButton" type="Button" parent="UI"]
 anchors_preset = 1
 anchor_left = 1.0
@@ -176,3 +378,10 @@ grow_horizontal = 0
 text = "Main Menu"
 modulate = Color(1.12, 1.12, 1.12, 1)
 script = ExtResource("7_menu_button")
+
+theme_override_colors/font_color = Color(0.98, 0.91, 0.69, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 0.82, 1)
+theme_override_styles/normal = SubResource("GameButtonNormal")
+theme_override_styles/hover = SubResource("GameButtonHover")
+theme_override_styles/pressed = SubResource("GameButtonPressed")
+texture_filter = 1

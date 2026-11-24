@@ -2,17 +2,20 @@ extends Control
 
 
 func _ready() -> void:
-	$CenterContainer/Menu/Incremental1Button.pressed.connect(_on_incremental_1_pressed)
-	$CenterContainer/Menu/QueenAnt1Button.pressed.connect(_on_queen_ant_1_pressed)
+	$CenterContainer/MenuArt/PlayButton.pressed.connect(_on_play_pressed)
+	$CenterContainer/MenuArt/ResetButton.pressed.connect(_on_reset_pressed)
+	$CenterContainer/MenuArt/ExitButton.pressed.connect(_on_exit_pressed)
 
 
-func _on_incremental_1_pressed() -> void:
+func _on_play_pressed() -> void:
 	var error := get_tree().change_scene_to_file("res://MainScene.tscn")
 	if error != OK:
-		push_error("Could not open Incremental 1: %s" % error_string(error))
+		push_error("Could not start the game: %s" % error_string(error))
 
 
-func _on_queen_ant_1_pressed() -> void:
-	var error := get_tree().change_scene_to_file("res://scenes/queen_ant_1.tscn")
-	if error != OK:
-		push_error("Could not open Queen Ant 1: %s" % error_string(error))
+func _on_reset_pressed() -> void:
+	GameState.reset_game()
+
+
+func _on_exit_pressed() -> void:
+	get_tree().quit()

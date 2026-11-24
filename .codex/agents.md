@@ -6,7 +6,7 @@
 - The core objective is “big number goes bigger.”
 - Main-game elements must be represented with `Polygon2D` nodes or particles.
 - Do not use assets for the main game; assets may be used only for GUI elements.
-- The shared `AntSource` world root is scaled 2x in both playable scenes, doubling every game object's rendered size and world spacing. CanvasLayer GUI elements stay at their original size.
+- The shared `AntSource` world root is scaled 4x in both playable scenes, quadrupling every game object's rendered size and world spacing. CanvasLayer GUI elements stay at their original size.
 
 ## Ant behavior contract
 

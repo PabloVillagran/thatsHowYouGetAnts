@@ -1,6 +1,6 @@
 extends Button
 
-@export_enum("worker", "queen", "warrior", "warrior_damage", "warrior_endurance", "warrior_training", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime", "food_source_size", "food_source_amount", "gathering_time") var purchase_kind: String = "worker"
+@export_enum("worker", "queen", "warrior", "warrior_damage", "warrior_endurance", "warrior_training", "queen_production", "carry_capacity", "speed", "food_efficiency", "worker_lifetime", "worker_dig_speed", "food_source_size", "food_source_amount", "gathering_time") var purchase_kind: String = "worker"
 
 var ant_source
 
@@ -41,11 +41,14 @@ func _is_unlocked(incremental: bool) -> bool:
 	if purchase_kind in ["warrior", "warrior_damage", "warrior_endurance", "warrior_training"]:
 		return ant_source.queen_ants.size() >= 4
 	if not incremental:
+		if purchase_kind == "worker_dig_speed":
+			return GameState.speed_level > 0
 		return purchase_kind not in ["food_source_size", "food_source_amount", "gathering_time"]
 	match purchase_kind:
 		"worker": return true
 		"carry_capacity": return ant_source.worker_ants.size() >= 10 or GameState.inc1_carry_level > 0
 		"speed": return (ant_source.worker_ants.size() >= 20 and GameState.inc1_carry_level > 0) or GameState.inc1_speed_level > 0
+		"worker_dig_speed": return GameState.inc1_speed_level > 0
 		"food_source_size": return GameState.inc1_carry_level >= 5
 		"queen": return ant_source.worker_ants.size() >= 25 or GameState.inc1_queen_level > 0
 		"food_source_amount": return ant_source.queen_ants.size() >= 2 or GameState.inc1_source_amount_level > 0
@@ -92,6 +95,7 @@ func _current_cost(incremental: bool) -> int:
 		"speed": return GameState.speed_cost
 		"food_efficiency": return GameState.food_efficiency_cost
 		"worker_lifetime": return GameState.worker_lifetime_cost
+		"worker_dig_speed": return GameState.worker_dig_speed_cost
 	return 0
 
 
@@ -123,6 +127,7 @@ func _purchase_label(incremental: bool, cost: int) -> String:
 			"warrior_training": label = "Warrior Move Speed +10%"
 			"queen_production": label = "Queen Spawn Rate +1 level" if ant_source.queen_ant_mode else "Queen Food +1/5s/queen"
 			"worker_lifetime": label = "Worker Lifetime +10s"
+			"worker_dig_speed": label = "Worker Dig Speed +1 step/pass"
 			"carry_capacity": label = "Carry +1 food/trip"
 			"speed": label = "Ant Speed +10%"
 			"food_efficiency": label = "New Source Stockpile +25%"
@@ -136,6 +141,7 @@ func _current_level(incremental: bool) -> int:
 		"warrior_damage": return GameState.warrior_damage_level
 		"warrior_endurance": return GameState.warrior_endurance_level
 		"warrior_training": return GameState.warrior_training_level
+		"worker_dig_speed": return GameState.worker_dig_speed_level
 	if incremental:
 		match purchase_kind:
 			"carry_capacity": return GameState.inc1_carry_level
