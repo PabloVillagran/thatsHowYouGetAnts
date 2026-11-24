@@ -13,9 +13,9 @@ enum State {
 	gathering,
 }
 
-const ANT_COLOR := Color.BLACK
-const OUTLINE_COLOR := Color.WHITE
-const OUTLINE_WIDTH := 0.5
+const QUEEN_TEXTURE: Texture2D = preload("res://assets/Ants/Queen.png")
+const WORKER_TEXTURE: Texture2D = preload("res://assets/Ants/Worker.png")
+const WARRIOR_TEXTURE: Texture2D = preload("res://assets/Ants/Warrior.png")
 
 @export var ant_type: AntType = AntType.WORKER
 @export var move_speed: float = 28.0
@@ -52,52 +52,28 @@ func _ready() -> void:
 
 
 func apply_type_appearance() -> void:
-	color = ANT_COLOR
-	if ant_type == AntType.WORKER:
-		polygon = PackedVector2Array([
-			Vector2(-1, -1.5),
-			Vector2(1, -1.5),
-			Vector2(1, 1.5),
-			Vector2(-1, 1.5),
-		])
-	polygon = _rounded_rectangle(polygon, 0.7 if ant_type == AntType.WORKER else 1.25)
-	var outline := get_node_or_null("Outline") as Line2D
-	if outline == null:
-		outline = Line2D.new()
-		outline.name = "Outline"
-		add_child(outline)
-	outline.clear_points()
-	for vertex in polygon:
-		outline.add_point(vertex)
-	if not polygon.is_empty():
-		outline.add_point(polygon[0])
-	outline.default_color = OUTLINE_COLOR
-	outline.width = OUTLINE_WIDTH
-	outline.antialiased = true
-
-
-func _rounded_rectangle(source: PackedVector2Array, radius: float) -> PackedVector2Array:
-	var min_x := source[0].x
-	var max_x := source[0].x
-	var min_y := source[0].y
-	var max_y := source[0].y
-	for vertex in source:
-		min_x = minf(min_x, vertex.x)
-		max_x = maxf(max_x, vertex.x)
-		min_y = minf(min_y, vertex.y)
-		max_y = maxf(max_y, vertex.y)
-	var corner_data := [
-		[Vector2(min_x + radius, min_y + radius), PI, PI * 1.5],
-		[Vector2(max_x - radius, min_y + radius), PI * 1.5, TAU],
-		[Vector2(max_x - radius, max_y - radius), 0.0, PI * 0.5],
-		[Vector2(min_x + radius, max_y - radius), PI * 0.5, PI],
-	]
-	var rounded := PackedVector2Array()
-	for corner in corner_data:
-		for step in range(4):
-			var angle: float = lerpf(corner[1], corner[2], float(step) / 3.0)
-			rounded.append(corner[0] + Vector2(cos(angle), sin(angle)) * radius)
-	return rounded
+	polygon = PackedVector2Array()
+	var ant_sprite := get_node_or_null("AntSprite") as Sprite2D
+	if ant_sprite == null:
+		ant_sprite = Sprite2D.new()
+		ant_sprite.name = "AntSprite"
+		add_child(ant_sprite)
+	var ant_texture: Texture2D = WORKER_TEXTURE
+	var display_size := Vector2(4.0, 8.0)
+	match ant_type:
+		AntType.QUEEN:
+			ant_texture = QUEEN_TEXTURE
+			display_size = Vector2(6.0, 9.0)
+		AntType.WORKER:
+			ant_texture = WORKER_TEXTURE
+			display_size = Vector2(2.0, 3.0)
+		AntType.WARRIOR:
+			ant_texture = WARRIOR_TEXTURE
+			display_size = Vector2(4.0, 8.0)
+	ant_sprite.texture = ant_texture
+	ant_sprite.centered = true
+	ant_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ant_sprite.scale = Vector2(display_size.x / ant_texture.get_width(), display_size.y / ant_texture.get_height())
 
 
 func set_state(next_state: State) -> void:
@@ -137,7 +113,7 @@ func move_step(delta: float) -> void:
 	if ant_source != null and ant_source.has_method("step_speed_multiplier_at"):
 		speed_multiplier = float(ant_source.call("step_speed_multiplier_at", position))
 	position = position.move_toward(movement_target, move_speed * speed_multiplier * delta)
-	rotation = heading.angle() - PI * 0.5
+	rotation = heading.angle() + PI * 0.5
 
 
 func is_at_target(tolerance: float = 1.0) -> bool:

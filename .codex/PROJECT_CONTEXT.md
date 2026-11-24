@@ -5,8 +5,8 @@
 - Format: 2D idle game.
 - Theme: managing an ant colony.
 - Core objective: “big number goes bigger.”
-- Main-game visuals: use only `Polygon2D` nodes and particles for game elements.
-- Assets: reserve assets for GUI elements; the main game should not use imported art assets.
+- Main-game visuals use `Polygon2D` nodes and particles, with role-specific transparent pixel-art sprites for queens, workers, and defenders.
+- Other imported artwork remains reserved for GUI elements; ant sprites are stored as transparent `Queen.png`, `Worker.png`, and `Warrior.png` files in `assets/Ants`, converted from the corresponding JPEG sources.
 
 ## Version menu
 
@@ -14,7 +14,7 @@
 - Play opens `MainScene.tscn`; Reset clears the saved colony and restores starting values; Exit quits the game.
 - `scenes/queen_ant_1.tscn` remains a separate playable variant using the existing food-source foraging loop.
 - Both game scenes can return to the main menu through their in-game Main Menu buttons.
-- GUI buttons in the main menu and both playable scenes use the pixel-art button slices from `assets/GUI/FreeDemo.png` for normal, hover, and pressed states. Food and live-ant counter labels sit on matching nine-sliced atlas panels. Keep imported artwork limited to GUI; game-world visuals remain polygons and particles.
+- GUI buttons in the main menu and both playable scenes use the pixel-art button slices from `assets/GUI/FreeDemo.png` for normal, hover, and pressed states. Food and live-ant counter labels sit on matching nine-sliced atlas panels. Food and other world visuals remain polygons and particles; queens, workers, and defenders use their transparent role-specific ant sprites.
 
 ## Food amount
 

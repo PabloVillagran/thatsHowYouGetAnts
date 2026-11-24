@@ -2,7 +2,7 @@
 
 ## Visuals and scene structure
 
-- Use `Polygon2D` ants and food; workers are 2 by 3 AntSource-local units. The shared `AntSource` world root is scaled 4x in both variants, so all game objects and world spacing render at four times their local size while CanvasLayer GUI elements remain unchanged. Do not add imported game art.
+- Use transparent role-specific pixel-art sprites for queens, workers, and defenders from `assets/Ants`; food remains `Polygon2D`. Worker sprites are 2 by 3 AntSource-local units, queens 6 by 9, and defenders 4 by 8. The shared `AntSource` world root is scaled 4x in both variants, so all game objects and world spacing render at four times their local size while CanvasLayer GUI elements remain unchanged. Preserve nearest-neighbor filtering for crisp pixel edges.
 - `AntSource` owns the queen, worker, and warrior ants directly. In both variants, workers are divided as evenly as possible among queen-led groups, with group sizes differing by at most one. One queen means one group contains all workers; there is no per-group cap.
 - Queens spawn at `QUEEN_SPAWN_POSITION`, 32 pixels above the AntSource origin. Workers spawn at random points inside the queen-centered 10 by 10 pixel deposit square, then join the smallest eligible leader group, with nearest leader breaking ties.
 - Expired Queen Ant 1 workers disappear completely.

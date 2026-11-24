@@ -4,8 +4,8 @@
 - Develop for and on Android.
 - Make a 2D idle game about managing an ant colony.
 - The core objective is “big number goes bigger.”
-- Main-game elements must be represented with `Polygon2D` nodes or particles.
-- Do not use assets for the main game; assets may be used only for GUI elements.
+- Main-game elements use `Polygon2D` nodes or particles, except that queens, workers, and defenders use the role-specific transparent pixel-art sprites in `assets/Ants`.
+- Other imported artwork is limited to GUI elements.
 - The shared `AntSource` world root is scaled 4x in both playable scenes, quadrupling every game object's rendered size and world spacing. CanvasLayer GUI elements stay at their original size.
 
 ## Ant behavior contract
